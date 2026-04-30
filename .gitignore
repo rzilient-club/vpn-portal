@@ -9,9 +9,13 @@
 # Environment
 .env
 .env.*
+# Environment
+.env
+.env.*
 
 # WireGuard configs (contain private keys)
-*.conf
+*-vpn.conf
+*-vpn*.conf
 
 # Peer state (contains private keys)
 state.json
