@@ -1,0 +1,25 @@
+/.idea/.gitignore
+/.idea/modules.xml
+/.idea/vcs.xml
+/.idea/vpn-portal.iml
+/go.sum
+/.idea/go.imports.xml
+/vpn-portal
+/.vpn-portal.service
+# Environment
+.env
+.env.*
+
+# WireGuard configs (contain private keys)
+*.conf
+
+# Peer state (contains private keys)
+state.json
+
+# Go build artifacts
+vpn-portal
+*.exe
+
+# OS
+.DS_Store
+Thumbs.db

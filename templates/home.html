@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>_rzilient VPN — Secure Access</title>
+    <link rel="icon" type="image/x-icon" href="https://resources.rzilient.tech/assets/images/rzilient-sidebar-small-logo-lime.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --lime:       #B4EA1F;
+            --lime-dim:   rgba(180, 234, 31, 0.12);
+            --lime-glow:  rgba(180, 234, 31, 0.25);
+            --bg:         #0a0a0a;
+            --surface:    #111111;
+            --surface-2:  #1a1a1a;
+            --border:     #222222;
+            --border-hover: #333333;
+            --text:       #e8e8e8;
+            --text-dim:   #888888;
+            --text-muted: #555555;
+            --red:        #ef4444;
+            --mono:       'JetBrains Mono', ui-monospace, monospace;
+            --sans:       'Work Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            opacity: 0.03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 9999;
+        }
+
+        .grid-bg {
+            position: fixed;
+            inset: 0;
+            background-image:
+                    linear-gradient(var(--border) 1px, transparent 1px),
+                    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 60px 60px;
+            opacity: 0.15;
+            pointer-events: none;
+            z-index: 0;
+            mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 20%, transparent 70%);
+        }
+
+        .page {
+            position: relative;
+            z-index: 1;
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Nav */
+        nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 24px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text);
+        }
+
+        .nav-logo img { width: 28px; height: 28px; }
+
+        .nav-logo span {
+            font-family: var(--mono);
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .nav-logo .accent { color: var(--lime); }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .nav-user {
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .btn-logout {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-dim);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            font-family: var(--sans);
+        }
+
+        .btn-logout:hover {
+            color: var(--red);
+            border-color: rgba(239, 68, 68, 0.3);
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        /* Hero */
+        .hero {
+            padding: 80px 0 60px;
+            text-align: center;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--lime);
+            background: var(--lime-dim);
+            border: 1px solid rgba(180, 234, 31, 0.2);
+            padding: 6px 14px;
+            border-radius: 100px;
+            margin-bottom: 32px;
+            letter-spacing: 0.02em;
+        }
+
+        .hero-badge .dot {
+            width: 6px;
+            height: 6px;
+            background: var(--lime);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .hero h1 {
+            font-size: clamp(36px, 5vw, 56px);
+            font-weight: 700;
+            line-height: 1.05;
+            letter-spacing: -0.035em;
+            margin-bottom: 16px;
+        }
+
+        .hero h1 .accent {
+            background: linear-gradient(135deg, var(--lime) 0%, #8BC34A 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-sub {
+            font-size: 16px;
+            color: var(--text-dim);
+            max-width: 480px;
+            margin: 0 auto 16px;
+            line-height: 1.7;
+        }
+
+        .hero-email {
+            font-family: var(--mono);
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* Main card */
+        .main-card {
+            max-width: 560px;
+            margin: 0 auto;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .main-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--lime), transparent);
+        }
+
+        .card-label {
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+
+        /* IP display */
+        .ip-display {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 28px;
+            font-family: var(--mono);
+        }
+
+        .ip-method {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--lime);
+            background: var(--lime-dim);
+            padding: 3px 8px;
+            border-radius: 4px;
+            letter-spacing: 0.05em;
+        }
+
+        .ip-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        /* Actions */
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 28px;
+        }
+
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--lime);
+            color: #0a0a0a;
+            font-family: var(--mono);
+            font-size: 13px;
+            font-weight: 600;
+            padding: 12px 24px;
+            border-radius: 10px;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            letter-spacing: 0.02em;
+        }
+
+        .btn-primary:hover {
+            background: #c5f52a;
+            box-shadow: 0 0 20px var(--lime-glow);
+        }
+
+        /* QR section */
+        .qr-section {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+        }
+
+        .qr-wrap {
+            background: white;
+            padding: 8px;
+            border-radius: 10px;
+            flex-shrink: 0;
+        }
+
+        .qr-wrap img { display: block; border-radius: 4px; }
+
+        .qr-hint {
+            font-size: 13px;
+            color: var(--text-dim);
+            line-height: 1.7;
+        }
+
+        .qr-hint strong {
+            display: block;
+            color: var(--text);
+            font-weight: 600;
+            margin-bottom: 4px;
+            font-size: 14px;
+        }
+
+        /* Generate state */
+        .generate-wrap {
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        .generate-wrap p {
+            color: var(--text-dim);
+            font-size: 14px;
+            line-height: 1.7;
+            margin-bottom: 28px;
+        }
+
+        .btn-generate {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--lime);
+            color: #0a0a0a;
+            font-family: var(--mono);
+            font-size: 13px;
+            font-weight: 600;
+            padding: 14px 32px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            letter-spacing: 0.02em;
+        }
+
+        .btn-generate:hover {
+            background: #c5f52a;
+            box-shadow: 0 0 24px var(--lime-glow);
+            transform: translateY(-1px);
+        }
+
+        /* Footer */
+        footer {
+            padding: 40px 0;
+            margin-top: 80px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .footer-left {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .footer-right a {
+            font-size: 13px;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer-right a:hover { color: var(--lime); }
+
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.4; }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .animate { animation: fadeInUp 0.5s ease-out both; }
+        .delay-1 { animation-delay: 0.1s; }
+        .delay-2 { animation-delay: 0.2s; }
+
+        @media (max-width: 600px) {
+            .main-card { padding: 28px 20px; }
+            .actions { flex-direction: column; }
+            .qr-section { flex-direction: column; text-align: center; }
+            nav { flex-direction: column; gap: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="grid-bg"></div>
+
+<div class="page">
+
+    <nav>
+        <a class="nav-logo" href="https://rzilient.tech">
+            <img src="https://resources.rzilient.tech/assets/images/rzilient-sidebar-small-logo-lime.svg" alt="_rzilient">
+            <span>_rzilient<span class="accent">.vpn</span></span>
+        </a>
+        <div class="nav-right">
+            <span class="nav-user">{{ .Email }}</span>
+            <a class="btn-logout" href="/auth/logout">logout</a>
+        </div>
+    </nav>
+
+    <section class="hero animate">
+        <div class="hero-badge">
+            <span class="dot"></span>
+            secure vpn access
+        </div>
+        <h1>_welcome, <span class="accent">{{ .Name }}</span></h1>
+        <p class="hero-sub">Your personal WireGuard credentials for secure access to rzilient infrastructure.</p>
+    </section>
+
+    <div class="main-card animate delay-1">
+        {{ if .HasPeer }}
+        <div class="card-label">// your vpn credentials</div>
+
+        <div class="ip-display">
+            <span class="ip-method">VPN IP</span>
+            <span class="ip-value">{{ .IP }}</span>
+        </div>
+
+        <div class="actions">
+            <a href="/download" class="btn-primary">↓ download config</a>
+        </div>
+
+        <div class="qr-section">
+            <div class="qr-wrap">
+                <img src="/qr" width="120" height="120" alt="QR Code">
+            </div>
+            <div class="qr-hint">
+                <strong>Mobile setup</strong>
+                Scan with the WireGuard app on iOS or Android to connect from your phone or tablet.
+            </div>
+        </div>
+
+        {{ else }}
+        <div class="card-label">// no credentials yet</div>
+        <div class="generate-wrap">
+            <p>
+                Generate your personal WireGuard configuration.<br>
+                One device per account — keep your config safe.
+            </p>
+            <form method="POST" action="/generate">
+                <button type="submit" class="btn-generate">⚡ generate my credentials</button>
+            </form>
+        </div>
+        {{ end }}
+    </div>
+
+    <footer>
+        <div class="footer-left">&copy; _rzilient group &middot; Paris, France</div>
+        <div class="footer-right">
+            <a href="https://rzilient.tech">rzilient.tech →</a>
+        </div>
+    </footer>
+
+</div>
+</body>
+</html>
