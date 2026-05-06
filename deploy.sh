@@ -14,10 +14,10 @@ function header() {
   echo -e "
   \033[38;5;22m                        .__.__  .__               __       __                .__\033[0m
   \033[38;5;28m          ______________|__|  | |__| ____   _____/  |_   _/  |_  ____   ____ |  |__\033[0m
-  \033[38;5;34m          \_  __ \___   /  |  | |  |/ __ \\ /    \\   __\\  \\   __\\/ __ \\_/ ___\\|  |  \ \\033[0m
-  \033[38;5;40m           |  | \\//    /|  |  |_|  \\  ___/|   |  \\  |     |  | \\  ___/\\  \\___|   Y  \ \\033[0m
-  \033[38;5;46m           |__|  /_____ \\__|____/__|\\___|  >__|  /__|     |__|  \\___  >\\___  >___|  /\033[0m
-  \033[38;5;82m   ▀▀▀▀▀▀▀             \\/                \\/     \\/                  \\/     \\/     \\/\033[0m
+  \033[38;5;34m          \_  __ \___   /  |  | |  |/ __\\ /    \\   __\\  \\   __\\/ __ \\_/ ___\\|  |  \\\033[0m
+  \033[38;5;40m           |  | \\//    /|  |  |_|  \\  ___/|   |  \\  |     |  | \\  ___/\\  \\___|   Y  \\\033[0m
+  \033[38;5;46m           |__|  /_____ \\__|____/__|\\___|  >___|  /__|     |__|  \\___  >\\___  >___|  /\033[0m
+  \033[38;5;82m   ▀▀▀▀▀▀▀             \\/               \\/     \\/                   \\/     \\/     \\/\033[0m
   \033[38;5;22m   https://rzilient.tech | eduard@rzilient.club\033[0m
 "
 }
@@ -34,21 +34,30 @@ usage() {
   header
   echo -e "\033[38;5;28m        ░▒▓ VPN Deploy Tool ▓▒░\033[0m"
   echo ""
-  echo -e "\033[38;5;46m  Usage: $0 [options]\033[0m"
+  echo -e "\033[38;5;46m  Usage: $0 <command> [options]\033[0m"
   echo ""
-  echo -e "\033[38;5;40m  Options:\033[0m"
+  echo -e "\033[38;5;40m  Commands:\033[0m"
+  echo "    deploy            Fresh installation on a new server"
+  echo "    update            Update code on an existing server"
+  echo ""
+  echo -e "\033[38;5;40m  Deploy options:\033[0m"
   echo "    -h, --host        Server IP or hostname          (required)"
   echo "    -u, --user        SSH user                       (default: root)"
   echo "    -p, --port        SSH port                       (default: 22)"
   echo "    -d, --domain      VPN portal domain              (required)"
   echo "    -e, --email       Let's Encrypt contact email    (required)"
   echo "    -s, --subnet      WireGuard subnet prefix        (default: 10.8.0)"
-  echo "    -k, --ssh-key     Path to SSH private key        (default: ~/.ssh/id_rsa)"
-  echo "        --help        Show this help"
+  echo ""
+  echo -e "\033[38;5;40m  Update options:\033[0m"
+  echo "    -h, --host        Server IP or hostname          (required)"
+  echo "    -u, --user        SSH user                       (default: root)"
+  echo "    -p, --port        SSH port                       (default: 22)"
   echo ""
   echo -e "\033[38;5;40m  Examples:\033[0m"
-  echo "    $0 --host 1.2.3.4 --domain vpn.example.com --email admin@example.com"
-  echo "    $0 --host 1.2.3.4 --domain vpn-fr.example.com --email admin@example.com --subnet 10.9.0"
+  echo "    $0 deploy --host 1.2.3.4 --domain vpn.example.com --email admin@example.com"
+  echo "    $0 deploy --host 1.2.3.4 --domain vpn-fr.example.com --email admin@example.com --subnet 10.9.0"
+  echo "    $0 update --host 1.2.3.4"
+  echo "    $0 update --host 1.2.3.4 --user ubuntu --ssh-key ~/.ssh/my_key"
   echo ""
   exit 1
 }
@@ -56,11 +65,17 @@ usage() {
 # ─── Defaults ─────────────────────────────────────────────────────────────────
 SSH_USER="root"
 SSH_PORT="22"
-SSH_KEY="$HOME/.ssh/id_rsa"
 DOMAIN=""
 EMAIL=""
 SUBNET="10.8.0"
 HOST=""
+
+# ─── Parse command ────────────────────────────────────────────────────────────
+COMMAND="${1:-}"
+if [[ "$COMMAND" != "deploy" && "$COMMAND" != "update" ]]; then
+  usage
+fi
+shift
 
 # ─── Parse args ───────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -71,26 +86,62 @@ while [[ $# -gt 0 ]]; do
     -d|--domain)  DOMAIN="$2";    shift 2 ;;
     -e|--email)   EMAIL="$2";     shift 2 ;;
     -s|--subnet)  SUBNET="$2";    shift 2 ;;
-    -k|--ssh-key) SSH_KEY="$2";   shift 2 ;;
     --help)       usage ;;
     *) log_err "Unknown option: $1"; usage ;;
   esac
 done
 
-# Show logo on every run
-echo ""
-
-# ─── Validate required args ───────────────────────────────────────────────────
+# ─── Validate args ────────────────────────────────────────────────────────────
 ERRORS=0
-if [ -z "$HOST" ];   then log_err "--host is required";   ERRORS=1; fi
-if [ -z "$DOMAIN" ]; then log_err "--domain is required"; ERRORS=1; fi
-if [ -z "$EMAIL" ];  then log_err "--email is required";  ERRORS=1; fi
+if [ -z "$HOST" ]; then log_err "--host is required"; ERRORS=1; fi
+
+if [[ "$COMMAND" == "deploy" ]]; then
+  if [ -z "$DOMAIN" ]; then log_err "--domain is required"; ERRORS=1; fi
+  if [ -z "$EMAIL" ];  then log_err "--email is required";  ERRORS=1; fi
+fi
+
 [ $ERRORS -ne 0 ] && echo "" && usage
 
 SSH_TARGET="$SSH_USER@$HOST"
-SSH_OPTS="-p $SSH_PORT -i $SSH_KEY -o StrictHostKeyChecking=accept-new"
 LOCAL_DIR="$(dirname "$0")"
 
+# ══════════════════════════════════════════════════════════════════════════════
+# UPDATE
+# ══════════════════════════════════════════════════════════════════════════════
+if [[ "$COMMAND" == "update" ]]; then
+  echo ""
+  log_info "Host:    $SSH_TARGET"
+  echo ""
+
+  log_step "Copying files to server"
+  scp "$LOCAL_DIR/main.go"       "$SSH_TARGET:/opt/vpn-portal/"
+  scp "$LOCAL_DIR/go.mod"        "$SSH_TARGET:/opt/vpn-portal/"
+  scp "$LOCAL_DIR/manifest.json" "$SSH_TARGET:/opt/vpn-portal/"
+  scp -r "$LOCAL_DIR/static"     "$SSH_TARGET:/opt/vpn-portal/"
+  scp -r "$LOCAL_DIR/templates"  "$SSH_TARGET:/opt/vpn-portal/"
+  log_ok "Files copied"
+  echo ""
+
+  log_step "Building and restarting on $HOST"
+  ssh "$SSH_TARGET" 'set -e
+cd /opt/vpn-portal
+go mod tidy
+go build -o vpn-portal .
+systemctl restart vpn-portal
+systemctl status vpn-portal --no-pager'
+
+  echo ""
+  log_ok "vpn-portal updated and restarted on $HOST"
+  log_info "Logs: ssh $SSH_TARGET journalctl -u vpn-portal -f"
+  echo ""
+  exit 0
+fi
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DEPLOY
+# ══════════════════════════════════════════════════════════════════════════════
+echo ""
 log_info "Host:    $SSH_TARGET:$SSH_PORT"
 log_info "Domain:  $DOMAIN"
 log_info "Subnet:  ${SUBNET}.0/24"
@@ -99,19 +150,21 @@ echo ""
 
 # ─── Copy files to server ─────────────────────────────────────────────────────
 log_step "Copying files to server"
-ssh $SSH_OPTS $SSH_TARGET "mkdir -p /tmp/vpn-portal"
-scp -q $SSH_OPTS "$LOCAL_DIR/main.go"            "$SSH_TARGET:/tmp/vpn-portal/"
-scp -q $SSH_OPTS "$LOCAL_DIR/go.mod"             "$SSH_TARGET:/tmp/vpn-portal/"
-scp -q $SSH_OPTS "$LOCAL_DIR/nginx.conf"         "$SSH_TARGET:/tmp/vpn-portal/"
-scp -q $SSH_OPTS "$LOCAL_DIR/vpn-portal.service" "$SSH_TARGET:/tmp/vpn-portal/"
-scp -q -r $SSH_OPTS "$LOCAL_DIR/templates"       "$SSH_TARGET:/tmp/vpn-portal/"
+ssh "$SSH_TARGET" "mkdir -p /tmp/vpn-portal"
+scp -q "$LOCAL_DIR/main.go"            "$SSH_TARGET:/tmp/vpn-portal/"
+scp -q "$LOCAL_DIR/go.mod"             "$SSH_TARGET:/tmp/vpn-portal/"
+scp -q "$LOCAL_DIR/nginx.conf"         "$SSH_TARGET:/tmp/vpn-portal/"
+scp -q "$LOCAL_DIR/vpn-portal.service" "$SSH_TARGET:/tmp/vpn-portal/"
+scp -q "$LOCAL_DIR/manifest.json"      "$SSH_TARGET:/tmp/vpn-portal/"
+scp -q -r "$LOCAL_DIR/static"          "$SSH_TARGET:/tmp/vpn-portal/"
+scp -q -r "$LOCAL_DIR/templates"       "$SSH_TARGET:/tmp/vpn-portal/"
 log_ok "Files copied"
 echo ""
 
 # ─── Remote deploy ────────────────────────────────────────────────────────────
 log_step "Running remote deployment on $HOST"
 echo ""
-ssh $SSH_OPTS $SSH_TARGET bash << REMOTE
+ssh "$SSH_TARGET" bash << REMOTE
 set -e
 
 echo "==> Installing dependencies"
@@ -164,8 +217,10 @@ mkdir -p /opt/vpn-portal
 cd /opt/vpn-portal
 cp /tmp/vpn-portal/main.go .
 cp /tmp/vpn-portal/go.mod .
+cp /tmp/vpn-portal/manifest.json .
+cp -r /tmp/vpn-portal/static .
 cp -r /tmp/vpn-portal/templates .
-go mod tidy -q
+go mod tidy
 go build -o vpn-portal .
 echo "    built"
 
@@ -201,10 +256,6 @@ echo "==> Starting vpn-portal"
 systemctl start vpn-portal
 sleep 1
 systemctl is-active --quiet vpn-portal && echo "    running" || echo "    FAILED — check: journalctl -u vpn-portal"
-
-SERVER_IP=\$(curl -s ifconfig.me)
-SERVER_KEY=\$(cat /etc/wireguard/server_public.key)
-echo "__DEPLOY_DONE__:\$SERVER_IP:\$SERVER_KEY"
 REMOTE
 
 # ─── Local summary ────────────────────────────────────────────────────────────
