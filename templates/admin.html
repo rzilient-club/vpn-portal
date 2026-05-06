@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>_rzilient VPN — Admin</title>
+  <link rel="icon" type="image/x-icon" href="https://resources.rzilient.tech/assets/images/rzilient-sidebar-small-logo-lime.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --lime:       #B4EA1F;
+      --lime-dim:   rgba(180, 234, 31, 0.12);
+      --lime-glow:  rgba(180, 234, 31, 0.25);
+      --bg:         #0a0a0a;
+      --surface:    #111111;
+      --surface-2:  #1a1a1a;
+      --border:     #222222;
+      --border-hover: #333333;
+      --text:       #e8e8e8;
+      --text-dim:   #888888;
+      --text-muted: #555555;
+      --red:        #ef4444;
+      --red-dim:    rgba(239, 68, 68, 0.1);
+      --amber:      #f59e0b;
+      --amber-dim:  rgba(245, 158, 11, 0.1);
+      --green:      #22c55e;
+      --green-dim:  rgba(34, 197, 94, 0.1);
+      --mono:       'JetBrains Mono', ui-monospace, monospace;
+      --sans:       'Work Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .grid-bg {
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 60px 60px;
+      opacity: 0.15;
+      pointer-events: none;
+      z-index: 0;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 20%, transparent 70%);
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Nav */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .nav-logo img { width: 28px; height: 28px; }
+
+    .nav-logo span {
+      font-family: var(--mono);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .nav-logo .accent { color: var(--lime); }
+
+    .admin-badge {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--amber);
+      background: var(--amber-dim);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      padding: 4px 10px;
+      border-radius: 4px;
+      letter-spacing: 0.05em;
+    }
+
+    /* Header */
+    .header {
+      padding: 48px 0 32px;
+    }
+
+    .section-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .header h1 {
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      margin-bottom: 8px;
+    }
+
+    .header h1 .accent {
+      background: linear-gradient(135deg, var(--lime) 0%, #8BC34A 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header-sub {
+      color: var(--text-dim);
+      font-size: 15px;
+    }
+
+    /* Stats row */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .stat-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-family: var(--mono);
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .stat-value.lime { color: var(--lime); }
+    .stat-value.red  { color: var(--red); }
+    .stat-value.amber { color: var(--amber); }
+
+    /* Table */
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 40px;
+    }
+
+    .table-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .table-title {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-dim);
+      letter-spacing: 0.05em;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s ease;
+    }
+
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface-2); }
+    tbody tr.blocked-row { opacity: 0.6; }
+
+    td {
+      padding: 14px 16px;
+      font-size: 13px;
+      vertical-align: middle;
+    }
+
+    .td-email {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .td-name {
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
+    .td-ip {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--lime);
+      background: var(--lime-dim);
+      padding: 3px 8px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+    .td-ip.blocked {
+      color: var(--red);
+      background: var(--red-dim);
+    }
+
+    .td-key {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .td-date {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    /* Status badge */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .status-badge .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+    }
+
+    .status-active {
+      color: var(--green);
+      background: var(--green-dim);
+    }
+
+    .status-active .dot { background: var(--green); }
+
+    .status-blocked {
+      color: var(--red);
+      background: var(--red-dim);
+    }
+
+    .status-blocked .dot { background: var(--red); }
+
+    .status-never {
+      color: var(--amber);
+      background: var(--amber-dim);
+    }
+
+    .status-never .dot { background: var(--amber); }
+
+    /* Action buttons */
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      letter-spacing: 0.03em;
+    }
+
+    .btn-block {
+      background: var(--amber-dim);
+      color: var(--amber);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+
+    .btn-block:hover {
+      background: rgba(245, 158, 11, 0.2);
+    }
+
+    .btn-unblock {
+      background: var(--green-dim);
+      color: var(--green);
+      border: 1px solid rgba(34, 197, 94, 0.2);
+    }
+
+    .btn-unblock:hover {
+      background: rgba(34, 197, 94, 0.2);
+    }
+
+    .btn-revoke {
+      background: var(--red-dim);
+      color: var(--red);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .btn-revoke:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+
+    /* Confirm dialog */
+    .confirm-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .confirm-overlay.active { display: flex; }
+
+    .confirm-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 400px;
+      width: 90%;
+      text-align: center;
+      position: relative;
+    }
+
+    .confirm-modal::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--red), transparent);
+      border-radius: 16px 16px 0 0;
+    }
+
+    .confirm-icon {
+      font-size: 32px;
+      margin-bottom: 16px;
+    }
+
+    .confirm-modal h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+
+    .confirm-modal p {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+
+    .confirm-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    .btn-cancel {
+      background: var(--surface-2);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-cancel:hover { border-color: var(--border-hover); }
+
+    .btn-confirm-revoke {
+      background: var(--red);
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-confirm-revoke:hover { background: #dc2626; }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 60px 24px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    /* Footer */
+    footer {
+      padding: 32px 0;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-left {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    @media (max-width: 768px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      table { font-size: 11px; }
+      td { padding: 10px 12px; }
+      .actions { flex-direction: column; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="grid-bg"></div>
+
+<!-- Confirm revoke modal -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-modal">
+    <div class="confirm-icon">⚠️</div>
+    <h3>Revoke access?</h3>
+    <p id="confirmText">This will permanently remove the peer from WireGuard and delete their credentials. They will need to generate new ones.</p>
+    <div class="confirm-actions">
+      <button class="btn-cancel" onclick="closeConfirm()">Cancel</button>
+      <form id="confirmForm" method="POST">
+        <input type="hidden" name="public_key" id="confirmKey">
+        <button type="submit" class="btn-confirm-revoke">Revoke permanently</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+
+  <nav>
+    <a class="nav-logo" href="https://rzilient.tech">
+      <img src="https://resources.rzilient.tech/assets/images/rzilient-sidebar-small-logo-lime.svg" alt="_rzilient">
+      <span>_rzilient<span class="accent">.vpn</span></span>
+    </a>
+    <span class="admin-badge">// admin</span>
+  </nav>
+
+  <div class="header">
+    <div class="section-label">// peer management</div>
+    <h1>_admin <span class="accent">panel</span></h1>
+    <p class="header-sub">Manage VPN peer access — block, unblock or permanently revoke credentials.</p>
+  </div>
+
+  <!-- Stats -->
+  {{ $total   := len .Peers }}
+  {{ $active  := 0 }}
+  {{ $blocked := 0 }}
+  {{ $never   := 0 }}
+  {{ range .Peers }}
+    {{ if .Blocked }}{{ $blocked = add $blocked 1 }}
+    {{ else }}{{ $active = add $active 1 }}{{ end }}
+  {{ end }}
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">Total peers</div>
+      <div class="stat-value">{{ len .Peers }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active</div>
+      <div class="stat-value lime">{{ range .Peers }}{{ if not .Blocked }}{{ end }}{{ end }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Blocked</div>
+      <div class="stat-value red">{{ range .Peers }}{{ if .Blocked }}{{ end }}{{ end }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Server</div>
+      <div class="stat-value" style="font-size:14px; padding-top:4px; color: var(--text-dim);">wg0</div>
+    </div>
+  </div>
+
+  <!-- Peers table -->
+  <div class="table-wrap">
+    <div class="table-header">
+      <span class="table-title">// peers</span>
+    </div>
+
+    {{ if .Peers }}
+    <table>
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Name</th>
+          <th>VPN IP</th>
+          <th>Public Key</th>
+          <th>Created</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range .Peers }}
+        <tr {{ if .Blocked }}class="blocked-row"{{ end }}>
+          <td><span class="td-email">{{ .Email }}</span></td>
+          <td><span class="td-name">{{ .Name }}</span></td>
+          <td>
+            <span class="td-ip {{ if .Blocked }}blocked{{ end }}">{{ .AssignedIP }}</span>
+          </td>
+          <td><span class="td-key">{{ slice .PublicKey 0 16 }}...</span></td>
+          <td><span class="td-date">{{ .CreatedAt.Format "2006-01-02" }}</span></td>
+          <td>
+            {{ if .Blocked }}
+            <span class="status-badge status-blocked"><span class="dot"></span>blocked</span>
+            {{ else }}
+            <span class="status-badge status-active"><span class="dot"></span>active</span>
+            {{ end }}
+          </td>
+          <td>
+            <div class="actions">
+              {{ if .Blocked }}
+              <form method="POST" action="/admin/unblock?token={{ $.Token }}">
+                <input type="hidden" name="public_key" value="{{ .PublicKey }}">
+                <button type="submit" class="btn btn-unblock">↑ unblock</button>
+              </form>
+              {{ else }}
+              <form method="POST" action="/admin/block?token={{ $.Token }}">
+                <input type="hidden" name="public_key" value="{{ .PublicKey }}">
+                <button type="submit" class="btn btn-block">⊘ block</button>
+              </form>
+              {{ end }}
+              <button
+                class="btn btn-revoke"
+                onclick="confirmRevoke('{{ .PublicKey }}', '{{ .Email }}', '/admin/revoke?token={{ $.Token }}')"
+              >✕ revoke</button>
+            </div>
+          </td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+    {{ else }}
+    <div class="empty-state">// no peers registered yet</div>
+    {{ end }}
+  </div>
+
+  <footer>
+    <div class="footer-left">_rzilient group · Paris, France</div>
+  </footer>
+
+</div>
+
+<script>
+  function confirmRevoke(pubKey, email, action) {
+    document.getElementById('confirmText').textContent =
+      'This will permanently remove ' + email + ' from WireGuard and delete their credentials. They will need to generate new ones.';
+    document.getElementById('confirmKey').value = pubKey;
+    document.getElementById('confirmForm').action = action;
+    document.getElementById('confirmOverlay').classList.add('active');
+  }
+
+  function closeConfirm() {
+    document.getElementById('confirmOverlay').classList.remove('active');
+  }
+
+  document.getElementById('confirmOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeConfirm();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeConfirm();
+  });
+</script>
+
+</body>
+</html>

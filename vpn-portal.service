@@ -20,6 +20,7 @@ Environment=WG_SERVER_ENDPOINT=<auto_injected_by_deploy_script>
 Environment=VPN_SUBNET=10.8.0
 Environment=STATE_FILE=/etc/wireguard/peers/state.json
 Environment=PORT=8080
+Environment=ADMIN_TOKEN=<your_secure_admin_token>
 
 [Install]
 WantedBy=multi-user.target

@@ -35,6 +35,7 @@ var (
 	vpnSubnet          = getEnv("VPN_SUBNET", "10.8.0")
 	sessionSecret      = getEnv("SESSION_SECRET", "change-me-in-production")
 	port               = getEnv("PORT", "8080")
+	adminToken         = getEnv("ADMIN_TOKEN", "")
 )
 
 var oauthConfig = &oauth2.Config{
@@ -54,6 +55,7 @@ type Peer struct {
 	PrivateKey string    `json:"private_key"`
 	AssignedIP string    `json:"assigned_ip"`
 	CreatedAt  time.Time `json:"created_at"`
+	Blocked    bool      `json:"blocked"`
 }
 
 type State struct {
@@ -143,7 +145,6 @@ func addWGPeer(publicKey, ip string) error {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("wg set: %s: %w", out, err)
 	}
-	// Persist
 	saveCmd := exec.Command("wg-quick", "save", wgInterface)
 	if out, err := saveCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("wg-quick save: %s: %w", out, err)
@@ -165,7 +166,7 @@ PersistentKeepalive = 25
 `, peer.PrivateKey, peer.AssignedIP, serverPublicKey, serverEndpoint)
 }
 
-// ─── Sessions (simple signed cookie) ─────────────────────────────────────────
+// ─── Sessions ─────────────────────────────────────────────────────────────────
 
 func setSession(w http.ResponseWriter, email, name string) {
 	val := base64.StdEncoding.EncodeToString([]byte(email + "|" + name))
@@ -426,12 +427,120 @@ func handleLoginCallback(w http.ResponseWriter, r *http.Request) {
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {
 	clearSession(w)
-	http.Redirect(w, r, "/auth/login", http.StatusFound)
+	http.Redirect(w, r, "https://rzilient.tech", http.StatusFound)
+}
+
+// ─── Admin ───────────────────────────────────────────────────────────────────
+
+func adminAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := r.URL.Query().Get("token")
+		if adminToken == "" || token != adminToken {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func handleAdmin(w http.ResponseWriter, r *http.Request) {
+	stateMu.Lock()
+	peers := make([]Peer, len(state.Peers))
+	copy(peers, state.Peers)
+	stateMu.Unlock()
+
+	token := r.URL.Query().Get("token")
+	renderTemplate(w, tmplAdmin, map[string]interface{}{
+		"Peers": peers,
+		"Token": token,
+	})
+}
+
+func handleAdminBlock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin?token="+r.URL.Query().Get("token"), http.StatusFound)
+		return
+	}
+
+	pubKey := r.FormValue("public_key")
+	token := r.URL.Query().Get("token")
+
+	stateMu.Lock()
+	defer stateMu.Unlock()
+
+	for i := range state.Peers {
+		if state.Peers[i].PublicKey == pubKey {
+			state.Peers[i].Blocked = true
+			if os.Getenv("DEV_MODE") != "true" {
+				exec.Command("wg", "set", wgInterface, "peer", pubKey, "remove").Run()
+				exec.Command("wg-quick", "save", wgInterface).Run()
+			}
+			log.Printf("[admin] blocked peer %s (%s)", state.Peers[i].Email, pubKey[:8])
+			break
+		}
+	}
+	saveState()
+	http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
+}
+
+func handleAdminUnblock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin?token="+r.URL.Query().Get("token"), http.StatusFound)
+		return
+	}
+
+	pubKey := r.FormValue("public_key")
+	token := r.URL.Query().Get("token")
+
+	stateMu.Lock()
+	defer stateMu.Unlock()
+
+	for i := range state.Peers {
+		if state.Peers[i].PublicKey == pubKey {
+			state.Peers[i].Blocked = false
+			exec.Command("wg", "set", wgInterface,
+				"peer", pubKey,
+				"allowed-ips", state.Peers[i].AssignedIP+"/32",
+			).Run()
+			exec.Command("wg-quick", "save", wgInterface).Run()
+			log.Printf("[admin] unblocked peer %s (%s)", state.Peers[i].Email, pubKey[:8])
+			break
+		}
+	}
+	saveState()
+	http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
+}
+
+func handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin?token="+r.URL.Query().Get("token"), http.StatusFound)
+		return
+	}
+
+	pubKey := r.FormValue("public_key")
+	token := r.URL.Query().Get("token")
+
+	stateMu.Lock()
+	defer stateMu.Unlock()
+
+	for i, p := range state.Peers {
+		if p.PublicKey == pubKey {
+			exec.Command("wg", "set", wgInterface, "peer", pubKey, "remove").Run()
+			exec.Command("wg-quick", "save", wgInterface).Run()
+			state.Peers = append(state.Peers[:i], state.Peers[i+1:]...)
+			log.Printf("[admin] revoked peer %s (%s)", p.Email, pubKey[:8])
+			break
+		}
+	}
+	saveState()
+	http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
 }
 
 // ─── Templates ────────────────────────────────────────────────────────────────
+
 var tmplHome *template.Template
 var tmplUnauthorized *template.Template
+var tmplAdmin *template.Template
 
 func init() {
 	godotenv.Load()
@@ -446,8 +555,25 @@ func init() {
 	vpnSubnet = getEnv("VPN_SUBNET", "10.8.0")
 	sessionSecret = getEnv("SESSION_SECRET", "change-me-in-production")
 	port = getEnv("PORT", "8080")
+	adminToken = getEnv("ADMIN_TOKEN", "")
+
+	funcMap := template.FuncMap{
+		"add": func(a, b int) int { return a + b },
+		"slice": func(s string, i, j int) string {
+			if i > len(s) {
+				return s
+			}
+			if j > len(s) {
+				j = len(s)
+			}
+			return s[i:j]
+		},
+	}
+
 	tmplHome = template.Must(template.ParseFiles("templates/home.html"))
 	tmplUnauthorized = template.Must(template.ParseFiles("templates/unauthorized.html"))
+	tmplAdmin = template.Must(template.New("admin.html").Funcs(funcMap).ParseFiles("templates/admin.html"))
+
 	oauthConfig.ClientID = googleClientID
 	oauthConfig.ClientSecret = googleClientSecret
 }
@@ -491,6 +617,10 @@ func main() {
 	mux.HandleFunc("/auth/login", handleLoginStart)
 	mux.HandleFunc("/auth/callback", handleLoginCallback)
 	mux.HandleFunc("/auth/logout", handleLogout)
+	mux.HandleFunc("/admin", adminAuth(handleAdmin))
+	mux.HandleFunc("/admin/block", adminAuth(handleAdminBlock))
+	mux.HandleFunc("/admin/unblock", adminAuth(handleAdminUnblock))
+	mux.HandleFunc("/admin/revoke", adminAuth(handleAdminRevoke))
 
 	addr := ":" + port
 	log.Printf("Starting VPN portal on %s", addr)
