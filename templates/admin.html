@@ -156,7 +156,7 @@
         /* Stats row */
         .stats {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(6, 1fr);
             gap: 12px;
             margin-bottom: 32px;
         }
@@ -492,7 +492,7 @@
         }
 
         @media (max-width: 768px) {
-            .stats { grid-template-columns: repeat(2, 1fr); }
+            .stats { grid-template-columns: repeat(3, 1fr); }
             table { font-size: 11px; }
             td { padding: 10px 12px; }
             .actions { flex-direction: column; gap: 4px; }
@@ -667,6 +667,24 @@
 
         tr.hidden-row { display: none; }
 
+        /* Sortable columns */
+        thead th.sortable {
+            cursor: pointer;
+            user-select: none;
+            transition: color 0.15s;
+        }
+
+        thead th.sortable:hover { color: var(--lime); }
+
+        thead th.sort-asc::after  { content: ' ↑'; color: var(--lime); }
+        thead th.sort-desc::after { content: ' ↓'; color: var(--lime); }
+
+        /* Total traffic stat cards */
+        .stat-card.traffic-rx-card { border-color: rgba(34, 197, 94, 0.2); }
+        .stat-card.traffic-tx-card { border-color: rgba(245, 158, 11, 0.2); }
+        .stat-value.rx { color: var(--green); }
+        .stat-value.tx { color: var(--amber); }
+
         @media (max-width: 480px) {
             .page { padding: 0 12px; }
             .stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -760,6 +778,14 @@
             <div class="stat-label">Server</div>
             <div class="stat-value" style="font-size:14px; padding-top:4px; color: var(--text-dim);">wg0</div>
         </div>
+        <div class="stat-card traffic-rx-card">
+            <div class="stat-label">Total ↓ RX</div>
+            <div class="stat-value rx" id="totalRx">—</div>
+        </div>
+        <div class="stat-card traffic-tx-card">
+            <div class="stat-label">Total ↑ TX</div>
+            <div class="stat-value tx" id="totalTx">—</div>
+        </div>
     </div>
 
     <!-- Toast -->
@@ -790,14 +816,14 @@
         <table>
             <thead>
             <tr>
-                <th>Email</th>
-                <th>Name</th>
-                <th>VPN IP</th>
+                <th class="sortable" data-col="email" onclick="sortTable('email')">Email</th>
+                <th class="sortable" data-col="name" onclick="sortTable('name')">Name</th>
+                <th class="sortable" data-col="ip" onclick="sortTable('ip')">VPN IP</th>
                 <th>Public Key</th>
-                <th>Created</th>
-                <th>Status</th>
-                <th>↓ RX / ↑ TX</th>
-                <th>Last seen</th>
+                <th class="sortable" data-col="created" onclick="sortTable('created')">Created</th>
+                <th class="sortable" data-col="blocked" onclick="sortTable('blocked')">Status</th>
+                <th class="sortable" data-col="rx" onclick="sortTable('rx')">↓ RX / ↑ TX</th>
+                <th class="sortable" data-col="lastseen" onclick="sortTable('lastseen')">Last seen</th>
                 <th>Actions</th>
             </tr>
             </thead>
@@ -1045,6 +1071,137 @@
             dot.classList.remove('spinning');
         }
     }
+
+    // ── Total traffic summary ────────────────────────────────────────────────────
+    function updateTotals(stats) {
+        let totalRx = 0, totalTx = 0;
+        Object.values(stats).forEach(s => {
+            totalRx += s.rx_bytes || 0;
+            totalTx += s.tx_bytes || 0;
+        });
+        document.getElementById('totalRx').textContent = formatBytes(totalRx);
+        document.getElementById('totalTx').textContent = formatBytes(totalTx);
+    }
+
+    function formatBytes(b) {
+        if (!b || b === 0) return '0 B';
+        const units = ['B','KB','MB','GB','TB'];
+        let i = 0;
+        while (b >= 1024 && i < units.length - 1) { b /= 1024; i++; }
+        return b.toFixed(1) + ' ' + units[i];
+    }
+
+    // ── Sort by column ────────────────────────────────────────────────────────
+    let sortState = { col: null, dir: 1 };
+
+    function sortTable(col) {
+        const tbody = document.querySelector('tbody');
+        const rows  = Array.from(tbody.querySelectorAll('tr[data-pubkey]'));
+
+        // Toggle direction if same column
+        if (sortState.col === col) {
+            sortState.dir *= -1;
+        } else {
+            sortState.col = col;
+            sortState.dir = 1;
+        }
+
+        // Update header indicators
+        document.querySelectorAll('thead th.sortable').forEach(th => {
+            th.classList.remove('sort-asc', 'sort-desc');
+            if (th.dataset.col === col) {
+                th.classList.add(sortState.dir === 1 ? 'sort-asc' : 'sort-desc');
+            }
+        });
+
+        rows.sort((a, b) => {
+            let aVal, bVal;
+
+            switch(col) {
+                case 'email':
+                case 'name':
+                case 'ip':
+                case 'created':
+                case 'blocked':
+                    aVal = (a.dataset[col] || '').toLowerCase();
+                    bVal = (b.dataset[col] || '').toLowerCase();
+                    return aVal.localeCompare(bVal) * sortState.dir;
+
+                case 'rx':
+                    aVal = lastRxBytes[a.dataset.pubkey] || 0;
+                    bVal = lastRxBytes[b.dataset.pubkey] || 0;
+                    return (aVal - bVal) * sortState.dir;
+
+                case 'lastseen':
+                    aVal = lastHandshakes[a.dataset.pubkey] || 0;
+                    bVal = lastHandshakes[b.dataset.pubkey] || 0;
+                    return (aVal - bVal) * sortState.dir;
+
+                default:
+                    return 0;
+            }
+        });
+
+        rows.forEach(row => tbody.appendChild(row));
+    }
+
+    // Track raw bytes for sorting
+    let lastRxBytes = {};
+
+    // Patch fetchStats to update totals and raw bytes
+    const _origFetchStats = fetchStats;
+    fetchStats = async function() {
+        const dot   = document.getElementById('refreshDot');
+        const label = document.getElementById('refreshLabel');
+        dot.classList.add('spinning');
+        label.textContent = 'updating...';
+
+        try {
+            const res = await fetch('/admin/stats?token=' + TOKEN);
+            if (!res.ok) throw new Error('Failed');
+            const stats = await res.json();
+
+            document.querySelectorAll('tr[data-pubkey]').forEach(row => {
+                const key = row.dataset.pubkey;
+                const s   = stats[key];
+                const rxEl   = row.querySelector('[data-stat="rx"]');
+                const txEl   = row.querySelector('[data-stat="tx"]');
+                const dotEl  = row.querySelector('[data-stat="dot"]');
+                const seenEl = row.querySelector('[data-stat="lastseen"]');
+
+                if (s) {
+                    lastHandshakes[key] = s.last_handshake;
+                    lastRxBytes[key]    = s.rx_bytes;
+                    if (rxEl)  rxEl.textContent  = s.rx_formatted;
+                    if (txEl)  txEl.textContent  = s.tx_formatted;
+                    if (seenEl) seenEl.textContent = timeAgo(s.last_handshake);
+                    if (dotEl) {
+                        dotEl.classList.toggle('online',  s.online);
+                        dotEl.classList.toggle('offline', !s.online);
+                    }
+                } else {
+                    if (rxEl)  rxEl.textContent  = '—';
+                    if (txEl)  txEl.textContent  = '—';
+                    if (seenEl) seenEl.textContent = 'never';
+                    if (dotEl) {
+                        dotEl.classList.remove('online');
+                        dotEl.classList.add('offline');
+                    }
+                }
+            });
+
+            updateTotals(stats);
+            label.textContent = 'updated ' + new Date().toLocaleTimeString();
+
+            // Re-apply sort if active
+            if (sortState.col) sortTable(sortState.col);
+
+        } catch(e) {
+            label.textContent = 'update failed';
+        } finally {
+            dot.classList.remove('spinning');
+        }
+    };
 
     // Initial fetch + poll every 30s + tick every second
     fetchStats();
