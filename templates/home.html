@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0a0a0a">
+    <link rel="manifest" href="/manifest.json">
     <title>_rzilient VPN — Secure Access</title>
     <link rel="icon" type="image/x-icon" href="https://resources.rzilient.tech/assets/images/rzilient-sidebar-small-logo-lime.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -390,10 +395,92 @@
         .delay-2 { animation-delay: 0.2s; }
 
         @media (max-width: 600px) {
-            .main-card { padding: 28px 20px; }
-            .actions { flex-direction: column; }
-            .qr-section { flex-direction: column; text-align: center; }
-            nav { flex-direction: column; gap: 12px; }
+            .page { padding: 0 16px; }
+
+            nav {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+                padding: 16px 0;
+            }
+
+            .nav-right {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .nav-user {
+                font-size: 11px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                max-width: 180px;
+            }
+
+            .hero {
+                padding: 40px 0 32px;
+            }
+
+            .hero h1 {
+                font-size: 28px;
+            }
+
+            .hero-sub {
+                font-size: 14px;
+            }
+
+            .main-card {
+                padding: 24px 16px;
+                border-radius: 14px;
+            }
+
+            .ip-display {
+                flex-wrap: wrap;
+                gap: 8px;
+                padding: 14px 16px;
+            }
+
+            .ip-value {
+                font-size: 15px;
+            }
+
+            .actions {
+                flex-direction: column;
+            }
+
+            .btn-primary,
+            .btn-generate {
+                width: 100%;
+                justify-content: center;
+                min-height: 48px;
+                font-size: 14px;
+            }
+
+            .qr-section {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                gap: 16px;
+            }
+
+            .qr-wrap img {
+                width: 160px;
+                height: 160px;
+            }
+
+            footer {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                margin-top: 40px;
+                padding: 24px 0;
+            }
+
+            .btn-logout {
+                min-height: 40px;
+                display: flex;
+                align-items: center;
+            }
         }
     </style>
 </head>

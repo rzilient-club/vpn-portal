@@ -1,0 +1,18 @@
+{
+  "name": "_rzilient VPN",
+  "short_name": "VPN",
+  "description": "Secure access to rzilient infrastructure",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    {
+      "src": "https://resources.rzilient.tech/assets/images/rzilient-sidebar-small-logo-lime.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

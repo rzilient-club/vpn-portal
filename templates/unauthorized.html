@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0a0a0a">
+    <link rel="manifest" href="/manifest.json">
     <title>Access Denied — _rzilient VPN</title>
     <link rel="icon" type="image/x-icon" href="https://resources.rzilient.tech/assets/images/rzilient-sidebar-small-logo-lime.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -171,6 +176,28 @@
         @keyframes fadeInUp {
             from { opacity: 0; transform: translateY(16px); }
             to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 600px) {
+            .card {
+                padding: 32px 20px;
+                width: 92%;
+                border-radius: 14px;
+            }
+
+            h1 { font-size: 20px; }
+
+            .email {
+                font-size: 11px;
+                word-break: break-all;
+                max-width: 100%;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+                min-height: 48px;
+            }
         }
     </style>
 </head>

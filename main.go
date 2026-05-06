@@ -471,10 +471,8 @@ func handleAdminBlock(w http.ResponseWriter, r *http.Request) {
 	for i := range state.Peers {
 		if state.Peers[i].PublicKey == pubKey {
 			state.Peers[i].Blocked = true
-			if os.Getenv("DEV_MODE") != "true" {
-				exec.Command("wg", "set", wgInterface, "peer", pubKey, "remove").Run()
-				exec.Command("wg-quick", "save", wgInterface).Run()
-			}
+			exec.Command("wg", "set", wgInterface, "peer", pubKey, "remove").Run()
+			exec.Command("wg-quick", "save", wgInterface).Run()
 			log.Printf("[admin] blocked peer %s (%s)", state.Peers[i].Email, pubKey[:8])
 			break
 		}
@@ -617,6 +615,10 @@ func main() {
 	mux.HandleFunc("/auth/login", handleLoginStart)
 	mux.HandleFunc("/auth/callback", handleLoginCallback)
 	mux.HandleFunc("/auth/logout", handleLogout)
+	mux.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/manifest+json")
+		http.ServeFile(w, r, "manifest.json")
+	})
 	mux.HandleFunc("/admin", adminAuth(handleAdmin))
 	mux.HandleFunc("/admin/block", adminAuth(handleAdminBlock))
 	mux.HandleFunc("/admin/unblock", adminAuth(handleAdminUnblock))

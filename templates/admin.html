@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="manifest" href="/manifest.json">
   <title>_rzilient VPN — Admin</title>
   <link rel="icon" type="image/x-icon" href="https://resources.rzilient.tech/assets/images/rzilient-sidebar-small-logo-lime.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -57,8 +62,8 @@
       position: fixed;
       inset: 0;
       background-image:
-        linear-gradient(var(--border) 1px, transparent 1px),
-        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+              linear-gradient(var(--border) 1px, transparent 1px),
+              linear-gradient(90deg, var(--border) 1px, transparent 1px);
       background-size: 60px 60px;
       opacity: 0.15;
       pointer-events: none;
@@ -490,6 +495,39 @@
       table { font-size: 11px; }
       td { padding: 10px 12px; }
       .actions { flex-direction: column; gap: 4px; }
+      .header { padding: 32px 0 20px; }
+      .header h1 { font-size: 28px; }
+      .table-wrap { border-radius: 12px; overflow-x: auto; }
+      table { min-width: 700px; }
+    }
+
+    @media (max-width: 480px) {
+      .page { padding: 0 12px; }
+      .stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .stat-card { padding: 14px; }
+      .stat-value { font-size: 22px; }
+      nav { flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px 0; }
+
+      .confirm-modal {
+        padding: 28px 20px;
+        width: 95%;
+      }
+
+      .confirm-actions {
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .btn-cancel,
+      .btn-confirm-revoke {
+        width: 100%;
+        min-height: 44px;
+      }
+
+      .btn {
+        padding: 8px 10px;
+        font-size: 10px;
+      }
     }
   </style>
 </head>
@@ -535,8 +573,8 @@
   {{ $blocked := 0 }}
   {{ $never   := 0 }}
   {{ range .Peers }}
-    {{ if .Blocked }}{{ $blocked = add $blocked 1 }}
-    {{ else }}{{ $active = add $active 1 }}{{ end }}
+  {{ if .Blocked }}{{ $blocked = add $blocked 1 }}
+  {{ else }}{{ $active = add $active 1 }}{{ end }}
   {{ end }}
 
   <div class="stats">
@@ -567,54 +605,54 @@
     {{ if .Peers }}
     <table>
       <thead>
-        <tr>
-          <th>Email</th>
-          <th>Name</th>
-          <th>VPN IP</th>
-          <th>Public Key</th>
-          <th>Created</th>
-          <th>Status</th>
-          <th>Actions</th>
-        </tr>
+      <tr>
+        <th>Email</th>
+        <th>Name</th>
+        <th>VPN IP</th>
+        <th>Public Key</th>
+        <th>Created</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
       </thead>
       <tbody>
-        {{ range .Peers }}
-        <tr {{ if .Blocked }}class="blocked-row"{{ end }}>
-          <td><span class="td-email">{{ .Email }}</span></td>
-          <td><span class="td-name">{{ .Name }}</span></td>
-          <td>
-            <span class="td-ip {{ if .Blocked }}blocked{{ end }}">{{ .AssignedIP }}</span>
-          </td>
-          <td><span class="td-key">{{ slice .PublicKey 0 16 }}...</span></td>
-          <td><span class="td-date">{{ .CreatedAt.Format "2006-01-02" }}</span></td>
-          <td>
+      {{ range .Peers }}
+      <tr {{ if .Blocked }}class="blocked-row"{{ end }}>
+        <td><span class="td-email">{{ .Email }}</span></td>
+        <td><span class="td-name">{{ .Name }}</span></td>
+        <td>
+          <span class="td-ip {{ if .Blocked }}blocked{{ end }}">{{ .AssignedIP }}</span>
+        </td>
+        <td><span class="td-key">{{ slice .PublicKey 0 16 }}...</span></td>
+        <td><span class="td-date">{{ .CreatedAt.Format "2006-01-02" }}</span></td>
+        <td>
+          {{ if .Blocked }}
+          <span class="status-badge status-blocked"><span class="dot"></span>blocked</span>
+          {{ else }}
+          <span class="status-badge status-active"><span class="dot"></span>active</span>
+          {{ end }}
+        </td>
+        <td>
+          <div class="actions">
             {{ if .Blocked }}
-            <span class="status-badge status-blocked"><span class="dot"></span>blocked</span>
+            <form method="POST" action="/admin/unblock?token={{ $.Token }}">
+              <input type="hidden" name="public_key" value="{{ .PublicKey }}">
+              <button type="submit" class="btn btn-unblock">↑ unblock</button>
+            </form>
             {{ else }}
-            <span class="status-badge status-active"><span class="dot"></span>active</span>
+            <form method="POST" action="/admin/block?token={{ $.Token }}">
+              <input type="hidden" name="public_key" value="{{ .PublicKey }}">
+              <button type="submit" class="btn btn-block">⊘ block</button>
+            </form>
             {{ end }}
-          </td>
-          <td>
-            <div class="actions">
-              {{ if .Blocked }}
-              <form method="POST" action="/admin/unblock?token={{ $.Token }}">
-                <input type="hidden" name="public_key" value="{{ .PublicKey }}">
-                <button type="submit" class="btn btn-unblock">↑ unblock</button>
-              </form>
-              {{ else }}
-              <form method="POST" action="/admin/block?token={{ $.Token }}">
-                <input type="hidden" name="public_key" value="{{ .PublicKey }}">
-                <button type="submit" class="btn btn-block">⊘ block</button>
-              </form>
-              {{ end }}
-              <button
-                class="btn btn-revoke"
-                onclick="confirmRevoke('{{ .PublicKey }}', '{{ .Email }}', '/admin/revoke?token={{ $.Token }}')"
-              >✕ revoke</button>
-            </div>
-          </td>
-        </tr>
-        {{ end }}
+            <button
+                    class="btn btn-revoke"
+                    onclick="confirmRevoke('{{ .PublicKey }}', '{{ .Email }}', '/admin/revoke?token={{ $.Token }}')"
+            >✕ revoke</button>
+          </div>
+        </td>
+      </tr>
+      {{ end }}
       </tbody>
     </table>
     {{ else }}
@@ -631,7 +669,7 @@
 <script>
   function confirmRevoke(pubKey, email, action) {
     document.getElementById('confirmText').textContent =
-      'This will permanently remove ' + email + ' from WireGuard and delete their credentials. They will need to generate new ones.';
+            'This will permanently remove ' + email + ' from WireGuard and delete their credentials. They will need to generate new ones.';
     document.getElementById('confirmKey').value = pubKey;
     document.getElementById('confirmForm').action = action;
     document.getElementById('confirmOverlay').classList.add('active');
