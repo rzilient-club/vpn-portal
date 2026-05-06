@@ -430,6 +430,84 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "https://rzilient.tech", http.StatusFound)
 }
 
+// ─── WireGuard Stats ─────────────────────────────────────────────────────────
+
+type WGStats struct {
+	PublicKey     string `json:"public_key"`
+	Endpoint      string `json:"endpoint"`
+	LastHandshake int64  `json:"last_handshake"`
+	RxBytes       int64  `json:"rx_bytes"`
+	TxBytes       int64  `json:"tx_bytes"`
+}
+
+func getWGStats() (map[string]WGStats, error) {
+	if os.Getenv("DEV_MODE") == "true" {
+		// Return fake stats in dev mode
+		return map[string]WGStats{
+			"dev-public-key": {
+				PublicKey:     "dev-public-key",
+				Endpoint:      "1.2.3.4:51820",
+				LastHandshake: time.Now().Add(-30 * time.Second).Unix(),
+				RxBytes:       1024 * 1024 * 42,
+				TxBytes:       1024 * 1024 * 128,
+			},
+		}, nil
+	}
+
+	out, err := exec.Command("wg", "show", wgInterface, "dump").Output()
+	if err != nil {
+		return nil, fmt.Errorf("wg show dump: %w", err)
+	}
+
+	stats := make(map[string]WGStats)
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+
+	for i, line := range lines {
+		if i == 0 {
+			continue // skip interface line
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 8 {
+			continue
+		}
+
+		pubKey := fields[0]
+		endpoint := fields[2]
+		lastHandshake := parseInt64(fields[4])
+		rxBytes := parseInt64(fields[5])
+		txBytes := parseInt64(fields[6])
+
+		stats[pubKey] = WGStats{
+			PublicKey:     pubKey,
+			Endpoint:      endpoint,
+			LastHandshake: lastHandshake,
+			RxBytes:       rxBytes,
+			TxBytes:       txBytes,
+		}
+	}
+
+	return stats, nil
+}
+
+func parseInt64(s string) int64 {
+	var n int64
+	fmt.Sscanf(s, "%d", &n)
+	return n
+}
+
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
 // ─── Admin ───────────────────────────────────────────────────────────────────
 
 func adminAuth(next http.HandlerFunc) http.HandlerFunc {
@@ -523,8 +601,10 @@ func handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
 
 	for i, p := range state.Peers {
 		if p.PublicKey == pubKey {
-			exec.Command("wg", "set", wgInterface, "peer", pubKey, "remove").Run()
-			exec.Command("wg-quick", "save", wgInterface).Run()
+			if os.Getenv("DEV_MODE") != "true" {
+				exec.Command("wg", "set", wgInterface, "peer", pubKey, "remove").Run()
+				exec.Command("wg-quick", "save", wgInterface).Run()
+			}
 			state.Peers = append(state.Peers[:i], state.Peers[i+1:]...)
 			log.Printf("[admin] revoked peer %s (%s)", p.Email, pubKey[:8])
 			break
@@ -532,6 +612,46 @@ func handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 	saveState()
 	http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
+}
+
+func handleAdminStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := getWGStats()
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Enrich with formatted values
+	type StatResponse struct {
+		PublicKey     string `json:"public_key"`
+		Endpoint      string `json:"endpoint"`
+		LastHandshake int64  `json:"last_handshake"`
+		RxBytes       int64  `json:"rx_bytes"`
+		TxBytes       int64  `json:"tx_bytes"`
+		RxFormatted   string `json:"rx_formatted"`
+		TxFormatted   string `json:"tx_formatted"`
+		Online        bool   `json:"online"`
+	}
+
+	result := make(map[string]StatResponse)
+	now := time.Now().Unix()
+
+	for k, s := range stats {
+		online := s.LastHandshake > 0 && (now-s.LastHandshake) < 180 // online if handshake < 3 min ago
+		result[k] = StatResponse{
+			PublicKey:     s.PublicKey,
+			Endpoint:      s.Endpoint,
+			LastHandshake: s.LastHandshake,
+			RxBytes:       s.RxBytes,
+			TxBytes:       s.TxBytes,
+			RxFormatted:   formatBytes(s.RxBytes),
+			TxFormatted:   formatBytes(s.TxBytes),
+			Online:        online,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 // ─── Templates ────────────────────────────────────────────────────────────────
@@ -623,6 +743,7 @@ func main() {
 	mux.HandleFunc("/admin/block", adminAuth(handleAdminBlock))
 	mux.HandleFunc("/admin/unblock", adminAuth(handleAdminUnblock))
 	mux.HandleFunc("/admin/revoke", adminAuth(handleAdminRevoke))
+	mux.HandleFunc("/admin/stats", adminAuth(handleAdminStats))
 
 	addr := ":" + port
 	log.Printf("Starting VPN portal on %s", addr)
