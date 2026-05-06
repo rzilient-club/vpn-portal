@@ -566,6 +566,107 @@
             animation: pulse 0.5s ease-in-out infinite;
         }
 
+        /* Search + export toolbar */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-input::placeholder { color: var(--text-muted); }
+        .search-input:focus { border-color: var(--lime); }
+
+        .search-count {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .btn-export {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-dim);
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .btn-export:hover {
+            color: var(--lime);
+            border-color: rgba(180, 234, 31, 0.3);
+        }
+
+        /* Copy config button */
+        .btn-copy {
+            background: var(--surface-2);
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+        }
+
+        .btn-copy:hover {
+            color: var(--lime);
+            border-color: rgba(180, 234, 31, 0.3);
+        }
+
+        .btn-copy.copied {
+            color: var(--green);
+            border-color: rgba(34, 197, 94, 0.3);
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 20px;
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--text);
+            z-index: 10001;
+            transform: translateY(80px);
+            opacity: 0;
+            transition: all 0.25s ease;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast.success { border-color: rgba(34, 197, 94, 0.4); color: var(--green); }
+        .toast.error   { border-color: rgba(239, 68, 68, 0.4); color: var(--red); }
+
+        tr.hidden-row { display: none; }
+
         @media (max-width: 480px) {
             .page { padding: 0 12px; }
             .stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -661,6 +762,9 @@
         </div>
     </div>
 
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
     <!-- Peers table -->
     <div class="table-wrap">
         <div class="table-header">
@@ -669,6 +773,17 @@
         <span class="refresh-dot" id="refreshDot"></span>
         <span id="refreshLabel">refreshing every 30s</span>
       </span>
+        </div>
+        <div class="toolbar">
+            <input
+                    class="search-input"
+                    id="searchInput"
+                    type="text"
+                    placeholder="// filter by email or name..."
+                    oninput="filterPeers()"
+            >
+            <span class="search-count" id="searchCount"></span>
+            <button class="btn-export" onclick="exportCSV()">↓ export csv</button>
         </div>
 
         {{ if .Peers }}
@@ -688,58 +803,63 @@
             </thead>
             <tbody>
             {{ range .Peers }}
-            <tr {{ if .Blocked }}class="blocked-row"{{ end }} data-pubkey="{{ .PublicKey }}">
-                <td><span class="td-email">{{ .Email }}</span></td>
-                <td><span class="td-name">{{ .Name }}</span></td>
-                <td>
-                    <span class="td-ip {{ if .Blocked }}blocked{{ end }}">{{ .AssignedIP }}</span>
-                </td>
-                <td><span class="td-key">{{ slice .PublicKey 0 16 }}...</span></td>
-                <td><span class="td-date">{{ .CreatedAt.Format "2006-01-02" }}</span></td>
-                <td>
+            <tr {{ if .Blocked }}class="blocked-row"{{ end }} data-pubkey="{{ .PublicKey }}" data-email="{{ .Email }}" data-name="{{ .Name }}" data-ip="{{ .AssignedIP }}" data-created="{{ .CreatedAt.Format "2006-01-02" }}" data-blocked="{{ .Blocked }}">
+            <td><span class="td-email">{{ .Email }}</span></td>
+            <td><span class="td-name">{{ .Name }}</span></td>
+            <td>
+                <span class="td-ip {{ if .Blocked }}blocked{{ end }}">{{ .AssignedIP }}</span>
+            </td>
+            <td><span class="td-key">{{ slice .PublicKey 0 16 }}...</span></td>
+            <td><span class="td-date">{{ .CreatedAt.Format "2006-01-02" }}</span></td>
+            <td>
+                {{ if .Blocked }}
+                <span class="status-badge status-blocked"><span class="dot"></span>blocked</span>
+                {{ else }}
+                <span class="status-badge status-active"><span class="dot"></span>active</span>
+                {{ end }}
+            </td>
+            <td>
+                <div class="traffic-cell">
+                    <div class="traffic-row">
+                        <span class="traffic-label">↓</span>
+                        <span class="td-traffic traffic-rx" data-stat="rx">—</span>
+                    </div>
+                    <div class="traffic-row">
+                        <span class="traffic-label">↑</span>
+                        <span class="td-traffic traffic-tx" data-stat="tx">—</span>
+                    </div>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span class="online-dot offline" data-stat="dot"></span>
+                    <span class="last-seen" data-stat="lastseen">—</span>
+                </div>
+            </td>
+            <td>
+                <div class="actions">
                     {{ if .Blocked }}
-                    <span class="status-badge status-blocked"><span class="dot"></span>blocked</span>
+                    <form method="POST" action="/admin/unblock?token={{ $.Token }}">
+                        <input type="hidden" name="public_key" value="{{ .PublicKey }}">
+                        <button type="submit" class="btn btn-unblock">↑ unblock</button>
+                    </form>
                     {{ else }}
-                    <span class="status-badge status-active"><span class="dot"></span>active</span>
+                    <form method="POST" action="/admin/block?token={{ $.Token }}">
+                        <input type="hidden" name="public_key" value="{{ .PublicKey }}">
+                        <button type="submit" class="btn btn-block">⊘ block</button>
+                    </form>
                     {{ end }}
-                </td>
-                <td>
-                    <div class="traffic-cell">
-                        <div class="traffic-row">
-                            <span class="traffic-label">↓</span>
-                            <span class="td-traffic traffic-rx" data-stat="rx">—</span>
-                        </div>
-                        <div class="traffic-row">
-                            <span class="traffic-label">↑</span>
-                            <span class="td-traffic traffic-tx" data-stat="tx">—</span>
-                        </div>
-                    </div>
-                </td>
-                <td>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <span class="online-dot offline" data-stat="dot"></span>
-                        <span class="last-seen" data-stat="lastseen">—</span>
-                    </div>
-                </td>
-                <td>
-                    <div class="actions">
-                        {{ if .Blocked }}
-                        <form method="POST" action="/admin/unblock?token={{ $.Token }}">
-                            <input type="hidden" name="public_key" value="{{ .PublicKey }}">
-                            <button type="submit" class="btn btn-unblock">↑ unblock</button>
-                        </form>
-                        {{ else }}
-                        <form method="POST" action="/admin/block?token={{ $.Token }}">
-                            <input type="hidden" name="public_key" value="{{ .PublicKey }}">
-                            <button type="submit" class="btn btn-block">⊘ block</button>
-                        </form>
-                        {{ end }}
-                        <button
-                                class="btn btn-revoke"
-                                onclick="confirmRevoke('{{ .PublicKey }}', '{{ .Email }}', '/admin/revoke?token={{ $.Token }}')"
-                        >✕ revoke</button>
-                    </div>
-                </td>
+                    <button
+                            class="btn btn-copy"
+                            id="copy-{{ .PublicKey | printf "%.8s" }}"
+                    onclick="copyConfig('{{ .PublicKey }}', this)"
+                    >⎘ config</button>
+                    <button
+                            class="btn btn-revoke"
+                            onclick="confirmRevoke('{{ .PublicKey }}', '{{ .Email }}', '/admin/revoke?token={{ $.Token }}')"
+                    >✕ revoke</button>
+                </div>
+            </td>
             </tr>
             {{ end }}
             </tbody>
@@ -757,6 +877,16 @@
 
 <script>
     const TOKEN = new URLSearchParams(window.location.search).get('token') || '';
+
+    // ── Toast ───────────────────────────────────────────────────────────────────
+    let toastTimer;
+    function showToast(msg, type = 'success') {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = 'toast show ' + type;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.className = 'toast', 2500);
+    }
 
     // ── Confirm revoke ──────────────────────────────────────────────────────────
     function confirmRevoke(pubKey, email, action) {
@@ -779,18 +909,97 @@
         if (e.key === 'Escape') closeConfirm();
     });
 
+    // ── Search / filter ─────────────────────────────────────────────────────────
+    function filterPeers() {
+        const q = document.getElementById('searchInput').value.toLowerCase().trim();
+        const rows = document.querySelectorAll('tr[data-pubkey]');
+        let visible = 0;
+
+        rows.forEach(row => {
+            const email = (row.dataset.email || '').toLowerCase();
+            const name  = (row.dataset.name  || '').toLowerCase();
+            const ip    = (row.dataset.ip    || '').toLowerCase();
+            const match = !q || email.includes(q) || name.includes(q) || ip.includes(q);
+            row.classList.toggle('hidden-row', !match);
+            if (match) visible++;
+        });
+
+        const count = document.getElementById('searchCount');
+        count.textContent = q ? visible + ' of ' + rows.length + ' peers' : '';
+    }
+
+    // ── Copy config ─────────────────────────────────────────────────────────────
+    async function copyConfig(pubKey, btn) {
+        try {
+            const res = await fetch('/admin/config?token=' + TOKEN + '&key=' + encodeURIComponent(pubKey));
+            if (!res.ok) throw new Error('Not found');
+            const config = await res.text();
+            await navigator.clipboard.writeText(config);
+            btn.textContent = '✓ copied';
+            btn.classList.add('copied');
+            showToast('Config copied to clipboard');
+            setTimeout(() => {
+                btn.textContent = '⎘ config';
+                btn.classList.remove('copied');
+            }, 2000);
+        } catch(e) {
+            showToast('Failed to copy config', 'error');
+        }
+    }
+
+    // ── Export CSV ──────────────────────────────────────────────────────────────
+    function exportCSV() {
+        const rows = document.querySelectorAll('tr[data-pubkey]');
+        const lines = ['Email,Name,VPN IP,Created,Status,RX,TX'];
+
+        rows.forEach(row => {
+            const rx = row.querySelector('[data-stat="rx"]')?.textContent || '—';
+            const tx = row.querySelector('[data-stat="tx"]')?.textContent || '—';
+            lines.push([
+                row.dataset.email,
+                row.dataset.name,
+                row.dataset.ip,
+                row.dataset.created,
+                row.dataset.blocked === 'true' ? 'blocked' : 'active',
+                rx,
+                tx,
+            ].map(v => '"' + (v || '').replace(/"/g, '""') + '"').join(','));
+        });
+
+        const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = 'rzilient-vpn-peers-' + new Date().toISOString().slice(0,10) + '.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('CSV exported');
+    }
+
     // ── Stats polling ───────────────────────────────────────────────────────────
+    let lastHandshakes = {};
+
     function timeAgo(ts) {
         if (!ts || ts === 0) return 'never';
         const diff = Math.floor(Date.now() / 1000) - ts;
-        if (diff < 60)   return diff + 's ago';
-        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 60)    return diff + 's ago';
+        if (diff < 3600)  return Math.floor(diff / 60) + 'm ago';
         if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
         return Math.floor(diff / 86400) + 'd ago';
     }
 
+    // Tick last-seen every second using cached timestamps
+    function tickLastSeen() {
+        document.querySelectorAll('tr[data-pubkey]').forEach(row => {
+            const key = row.dataset.pubkey;
+            const ts  = lastHandshakes[key];
+            const seenEl = row.querySelector('[data-stat="lastseen"]');
+            if (seenEl && ts) seenEl.textContent = timeAgo(ts);
+        });
+    }
+
     async function fetchStats() {
-        const dot = document.getElementById('refreshDot');
+        const dot   = document.getElementById('refreshDot');
         const label = document.getElementById('refreshLabel');
 
         dot.classList.add('spinning');
@@ -803,24 +1012,24 @@
 
             document.querySelectorAll('tr[data-pubkey]').forEach(row => {
                 const key = row.dataset.pubkey;
-                const s = stats[key];
-
-                const rxEl      = row.querySelector('[data-stat="rx"]');
-                const txEl      = row.querySelector('[data-stat="tx"]');
-                const dotEl     = row.querySelector('[data-stat="dot"]');
-                const seenEl    = row.querySelector('[data-stat="lastseen"]');
+                const s   = stats[key];
+                const rxEl    = row.querySelector('[data-stat="rx"]');
+                const txEl    = row.querySelector('[data-stat="tx"]');
+                const dotEl   = row.querySelector('[data-stat="dot"]');
+                const seenEl  = row.querySelector('[data-stat="lastseen"]');
 
                 if (s) {
-                    if (rxEl)   rxEl.textContent   = s.rx_formatted;
-                    if (txEl)   txEl.textContent   = s.tx_formatted;
+                    lastHandshakes[key] = s.last_handshake;
+                    if (rxEl)  rxEl.textContent  = s.rx_formatted;
+                    if (txEl)  txEl.textContent  = s.tx_formatted;
                     if (seenEl) seenEl.textContent = timeAgo(s.last_handshake);
                     if (dotEl) {
                         dotEl.classList.toggle('online',  s.online);
                         dotEl.classList.toggle('offline', !s.online);
                     }
                 } else {
-                    if (rxEl)   rxEl.textContent   = '—';
-                    if (txEl)   txEl.textContent   = '—';
+                    if (rxEl)  rxEl.textContent  = '—';
+                    if (txEl)  txEl.textContent  = '—';
                     if (seenEl) seenEl.textContent = 'never';
                     if (dotEl) {
                         dotEl.classList.remove('online');
@@ -837,9 +1046,10 @@
         }
     }
 
-    // Initial fetch + poll every 30s
+    // Initial fetch + poll every 30s + tick every second
     fetchStats();
     setInterval(fetchStats, 30000);
+    setInterval(tickLastSeen, 1000);
 </script>
 
 </body>

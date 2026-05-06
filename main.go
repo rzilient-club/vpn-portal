@@ -614,6 +614,32 @@ func handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
 }
 
+func handleAdminConfig(w http.ResponseWriter, r *http.Request) {
+	pubKey := r.URL.Query().Get("key")
+	if pubKey == "" {
+		http.Error(w, "missing key", http.StatusBadRequest)
+		return
+	}
+
+	stateMu.Lock()
+	var peer *Peer
+	for i := range state.Peers {
+		if state.Peers[i].PublicKey == pubKey {
+			peer = &state.Peers[i]
+			break
+		}
+	}
+	stateMu.Unlock()
+
+	if peer == nil {
+		http.Error(w, "peer not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprint(w, buildConfig(peer))
+}
+
 func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := getWGStats()
 	if err != nil {
@@ -744,6 +770,7 @@ func main() {
 	mux.HandleFunc("/admin/unblock", adminAuth(handleAdminUnblock))
 	mux.HandleFunc("/admin/revoke", adminAuth(handleAdminRevoke))
 	mux.HandleFunc("/admin/stats", adminAuth(handleAdminStats))
+	mux.HandleFunc("/admin/config", adminAuth(handleAdminConfig))
 
 	addr := ":" + port
 	log.Printf("Starting VPN portal on %s", addr)
