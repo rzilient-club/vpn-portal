@@ -10,8 +10,10 @@ set DROPLET "root@$argv[1]"
 set LOCAL_DIR (dirname (status filename))
 
 echo "==> Copying files to droplet"
-scp "$LOCAL_DIR/main.go" "$DROPLET:/opt/vpn-portal/"
-scp "$LOCAL_DIR/go.mod" "$DROPLET:/opt/vpn-portal/"
+scp "$LOCAL_DIR/main.go"      "$DROPLET:/opt/vpn-portal/"
+scp "$LOCAL_DIR/go.mod"       "$DROPLET:/opt/vpn-portal/"
+scp "$LOCAL_DIR/manifest.json" "$DROPLET:/opt/vpn-portal/"
+scp -r "$LOCAL_DIR/static"    "$DROPLET:/opt/vpn-portal/"
 scp -r "$LOCAL_DIR/templates" "$DROPLET:/opt/vpn-portal/"
 
 echo "==> Building and restarting"
