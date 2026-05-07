@@ -52,10 +52,8 @@
     </div>
 
     <!-- Stats -->
-    {{ $total   := len .Peers }}
     {{ $active  := 0 }}
     {{ $blocked := 0 }}
-    {{ $never   := 0 }}
     {{ range .Peers }}
     {{ if .Blocked }}{{ $blocked = add $blocked 1 }}
     {{ else }}{{ $active = add $active 1 }}{{ end }}
@@ -64,15 +62,15 @@
     <div class="stats">
         <div class="stat-card">
             <div class="stat-label">Total peers</div>
-            <div class="stat-value">{{ len .Peers }}</div>
+            <div class="stat-value" id="statTotal">{{ len .Peers }}</div>
         </div>
         <div class="stat-card">
             <div class="stat-label">Active</div>
-            <div class="stat-value lime">{{ range .Peers }}{{ if not .Blocked }}{{ end }}{{ end }}</div>
+            <div class="stat-value lime" id="statActive">{{ $active }}</div>
         </div>
         <div class="stat-card">
             <div class="stat-label">Blocked</div>
-            <div class="stat-value red">{{ range .Peers }}{{ if .Blocked }}{{ end }}{{ end }}</div>
+            <div class="stat-value red" id="statBlocked">{{ $blocked }}</div>
         </div>
         <div class="stat-card">
             <div class="stat-label">Server</div>
