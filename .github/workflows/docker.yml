@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: registry.digitalocean.com/rzilient
+  REGISTRY: registry.digitalocean.com/rzilient-do-containers
   IMAGE_NAME: vpn-portal
 
 jobs:

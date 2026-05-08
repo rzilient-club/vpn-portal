@@ -21,10 +21,10 @@ Environment=BASE_URL=<auto_injected>
 Environment=VPN_SUBNET=10.8.0
 
 # ── Set manually via: ./deploy.sh init --host x.x.x.x ────────────────────────
-Environment=GOOGLE_CLIENT_ID=<your_google_client_id>
-Environment=GOOGLE_CLIENT_SECRET=<your_google_client_secret>
-Environment=ALLOWED_DOMAINS=rzilient.club,rzilient.tech
-Environment=ADMIN_TOKEN=<your_secure_admin_token>
+Environment=GOOGLE_CLIENT_ID=REDACTED.apps.googleusercontent.com
+Environment=GOOGLE_CLIENT_SECRET=GOCSPX-REDACTED
+Environment=ALLOWED_DOMAINS=rzilient.club,rzilient.tech,rzilient.support
+Environment=ADMIN_TOKEN=2f3c46d7deb22aa51aaf6e5ccb46b0a2
 
 [Install]
 WantedBy=multi-user.target

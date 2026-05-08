@@ -9,7 +9,7 @@ LIME_GREEN='\033[38;5;40m'
 PALE_GREEN='\033[38;5;82m'
 COLOUR_END='\033[0m'
 
-REGISTRY="registry.digitalocean.com/rzilient"
+REGISTRY="registry.digitalocean.com/rzilient-do-containers"
 IMAGE="vpn-portal"
 
 # ─── Logo ─────────────────────────────────────────────────────────────────────
@@ -208,11 +208,22 @@ if [ -f /etc/vpn-portal.env ]; then
   sed -i "s|ADMIN_TOKEN=.*|ADMIN_TOKEN=${ADMIN_TOKEN}|"                             /etc/vpn-portal.env
 fi
 
-# Restart whichever is running
+# Recreate docker container to pick up new env file
 systemctl daemon-reload
-docker restart vpn-portal 2>/dev/null && echo "    docker container restarted" || \
-  systemctl restart vpn-portal 2>/dev/null && echo "    systemd service restarted" || \
-  echo "    nothing to restart"
+if docker ps -aq --filter name=vpn-portal | grep -q .; then
+  docker stop vpn-portal
+  docker rm vpn-portal
+  docker run -d \
+    --name vpn-portal \
+    --restart unless-stopped \
+    --network host \
+    --env-file /etc/vpn-portal.env \
+    -v /etc/wireguard:/etc/wireguard \
+    ${REGISTRY}/${IMAGE}:latest
+  echo "    container recreated with new secrets"
+else
+  systemctl restart vpn-portal 2>/dev/null && echo "    systemd service restarted" || echo "    nothing to restart"
+fi
 ENDSSH
 
   log_ok "Secrets injected on $HOST"
@@ -255,9 +266,22 @@ echo ""
 # ─── Remote deploy ────────────────────────────────────────────────────────────
 log_step "Running remote deployment on $HOST"
 echo ""
+
+# Read DO token locally before opening SSH session
+if [[ "$NO_DOCKER" == false ]]; then
+  if [ -z "$DO_API_TOKEN" ]; then
+    log_err "DO_API_TOKEN is not set — required for Docker registry auth"
+    log_info "Set it with: export DO_API_TOKEN=<your_token>"
+    exit 1
+  fi
+fi
+
 ssh "$SSH_TARGET" bash << REMOTE
 set -e
 export DEBIAN_FRONTEND=noninteractive
+DO_API_TOKEN="${DO_API_TOKEN}"
+REGISTRY="${REGISTRY}"
+IMAGE="${IMAGE}"
 
 echo "==> Installing dependencies"
 apt update -q
@@ -347,14 +371,17 @@ echo "    running"
 NODOCKEREOF
 else
 cat << 'DOCKEREOF'
-echo "==> Authenticating with DO Container Registry"
-echo "DOTOKEN_PLACEHOLDER" | docker login registry.digitalocean.com \
-  --username "DOTOKEN_PLACEHOLDER" \
-  --password-stdin 2>/dev/null
+echo "==> Installing doctl and authenticating with DO Container Registry"
+cd /tmp
+wget -q https://github.com/digitalocean/doctl/releases/download/v1.104.0/doctl-1.104.0-linux-amd64.tar.gz
+tar -xzf doctl-1.104.0-linux-amd64.tar.gz
+mv doctl /usr/local/bin/
+doctl auth init --access-token ${DO_API_TOKEN}
+doctl registry login
 echo "    authenticated"
 
 echo "==> Pulling vpn-portal image"
-docker pull REGISTRY_PLACEHOLDER/IMAGE_PLACEHOLDER:latest
+docker pull ${REGISTRY}/${IMAGE}:latest
 echo "    pulled"
 
 echo "==> Creating env file"
@@ -377,13 +404,16 @@ EOF
 chmod 600 /etc/vpn-portal.env
 
 echo "==> Starting vpn-portal container"
+docker stop vpn-portal 2>/dev/null || true
+docker rm vpn-portal 2>/dev/null || true
 docker run -d \
   --name vpn-portal \
   --restart unless-stopped \
   --network host \
+  --cap-add NET_ADMIN \
   --env-file /etc/vpn-portal.env \
   -v /etc/wireguard:/etc/wireguard \
-  REGISTRY_PLACEHOLDER/IMAGE_PLACEHOLDER:latest
+  ${REGISTRY}/${IMAGE}:latest
 echo "    running"
 
 echo "==> Installing systemd service (reference only)"
@@ -404,7 +434,8 @@ sed -i "0,/server_name/s|server_name .*;|server_name ${DOMAIN};|" /etc/nginx/sit
 ln -sf /etc/nginx/sites-available/vpn-portal /etc/nginx/sites-enabled/vpn-portal
 rm -f /etc/nginx/sites-enabled/default
 nginx -tq
-systemctl start nginx 2>/dev/null || systemctl reload nginx
+systemctl start nginx 2>/dev/null
+systemctl reload nginx
 echo "    running"
 
 echo "==> Obtaining SSL certificate"
@@ -420,7 +451,6 @@ for f in /etc/systemd/system/vpn-portal.service /etc/vpn-portal.env; do
   [ -f "\$f" ] && sed -i \
     -e "s|SUBNET_PLACEHOLDER|${SUBNET}|g" \
     -e "s|DOMAIN_PLACEHOLDER|${DOMAIN}|g" \
-    -e "s|DOTOKEN_PLACEHOLDER|${DO_API_TOKEN:-}|g" \
     -e "s|REGISTRY_PLACEHOLDER|${REGISTRY}|g" \
     -e "s|IMAGE_PLACEHOLDER|${IMAGE}|g" \
     "\$f"

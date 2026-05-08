@@ -1,6 +1,6 @@
 #!/usr/bin/env fish
 
-set REGISTRY "registry.digitalocean.com/rzilient"
+set REGISTRY "registry.digitalocean.com/rzilient-do-containers"
 set IMAGE    "vpn-portal"
 set TAG      (git rev-parse --short HEAD 2>/dev/null; or echo "local")
 
@@ -54,7 +54,8 @@ function do_push
   log_ok "Token fetched"
 
   log_step "Authenticating with DO Container Registry"
-  echo $DO_API_TOKEN | docker login registry.digitalocean.com     --username $DO_API_TOKEN     --password-stdin
+  doctl auth init --access-token $DO_API_TOKEN
+  doctl registry login
   log_ok "Authenticated"
 
   log_step "Pushing to registry"
@@ -79,6 +80,7 @@ function do_run
   docker run -d \
     --name vpn-portal-dev \
     -p 8080:8080 \
+    --cap-add NET_ADMIN \
     --env-file .env \
     $REGISTRY/$IMAGE:latest
 
