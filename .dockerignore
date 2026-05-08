@@ -1,0 +1,11 @@
+.git
+.env
+*.conf
+state.json
+vpn-portal
+*.exe
+deploy.sh
+install-vpn.sh
+install-vpn.fish
+README.md
+NEW_INSTANCE.md

@@ -9,6 +9,9 @@ LIME_GREEN='\033[38;5;40m'
 PALE_GREEN='\033[38;5;82m'
 COLOUR_END='\033[0m'
 
+REGISTRY="registry.digitalocean.com/rzilient"
+IMAGE="vpn-portal"
+
 # ─── Logo ─────────────────────────────────────────────────────────────────────
 function header() {
   echo -e "
@@ -38,7 +41,8 @@ usage() {
   echo ""
   echo -e "\033[38;5;40m  Commands:\033[0m"
   echo "    deploy            Fresh installation on a new server"
-  echo "    update            Update code on an existing server"
+  echo "    update            Update vpn-portal on an existing server"
+  echo "    init              Push vpn-portal.service secrets and restart"
   echo ""
   echo -e "\033[38;5;40m  Deploy options:\033[0m"
   echo "    -h, --host        Server IP or hostname          (required)"
@@ -47,17 +51,25 @@ usage() {
   echo "    -d, --domain      VPN portal domain              (required)"
   echo "    -e, --email       Let's Encrypt contact email    (required)"
   echo "    -s, --subnet      WireGuard subnet prefix        (default: 10.8.0)"
+  echo "        --no-docker   Build from source instead of Docker image"
   echo ""
   echo -e "\033[38;5;40m  Update options:\033[0m"
+  echo "    -h, --host        Server IP or hostname          (required)"
+  echo "    -u, --user        SSH user                       (default: root)"
+  echo "    -p, --port        SSH port                       (default: 22)"
+  echo "        --no-docker   Rebuild from source instead of pulling image"
+  echo ""
+  echo -e "\033[38;5;40m  Init options:\033[0m"
   echo "    -h, --host        Server IP or hostname          (required)"
   echo "    -u, --user        SSH user                       (default: root)"
   echo "    -p, --port        SSH port                       (default: 22)"
   echo ""
   echo -e "\033[38;5;40m  Examples:\033[0m"
   echo "    $0 deploy --host 1.2.3.4 --domain vpn.example.com --email admin@example.com"
-  echo "    $0 deploy --host 1.2.3.4 --domain vpn-fr.example.com --email admin@example.com --subnet 10.9.0"
+  echo "    $0 deploy --host 1.2.3.4 --domain vpn-fr.example.com --email admin@example.com --subnet 10.9.0 --no-docker"
   echo "    $0 update --host 1.2.3.4"
-  echo "    $0 update --host 1.2.3.4 --user ubuntu --ssh-key ~/.ssh/my_key"
+  echo "    $0 update --host 1.2.3.4 --no-docker"
+  echo "    $0 init --host 1.2.3.4"
   echo ""
   exit 1
 }
@@ -69,10 +81,11 @@ DOMAIN=""
 EMAIL=""
 SUBNET="10.8.0"
 HOST=""
+NO_DOCKER=false
 
 # ─── Parse command ────────────────────────────────────────────────────────────
 COMMAND="${1:-}"
-if [[ "$COMMAND" != "deploy" && "$COMMAND" != "update" ]]; then
+if [[ "$COMMAND" != "deploy" && "$COMMAND" != "update" && "$COMMAND" != "init" ]]; then
   usage
 fi
 shift
@@ -80,13 +93,14 @@ shift
 # ─── Parse args ───────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -h|--host)    HOST="$2";      shift 2 ;;
-    -u|--user)    SSH_USER="$2";  shift 2 ;;
-    -p|--port)    SSH_PORT="$2";  shift 2 ;;
-    -d|--domain)  DOMAIN="$2";    shift 2 ;;
-    -e|--email)   EMAIL="$2";     shift 2 ;;
-    -s|--subnet)  SUBNET="$2";    shift 2 ;;
-    --help)       usage ;;
+    -h|--host)      HOST="$2";      shift 2 ;;
+    -u|--user)      SSH_USER="$2";  shift 2 ;;
+    -p|--port)      SSH_PORT="$2";  shift 2 ;;
+    -d|--domain)    DOMAIN="$2";    shift 2 ;;
+    -e|--email)     EMAIL="$2";     shift 2 ;;
+    -s|--subnet)    SUBNET="$2";    shift 2 ;;
+    --no-docker)    NO_DOCKER=true; shift ;;
+    --help)         usage ;;
     *) log_err "Unknown option: $1"; usage ;;
   esac
 done
@@ -111,53 +125,130 @@ LOCAL_DIR="$(dirname "$0")"
 if [[ "$COMMAND" == "update" ]]; then
   echo ""
   log_info "Host:    $SSH_TARGET"
+  if [[ "$NO_DOCKER" == true ]]; then
+    log_info "Mode:    source (--no-docker)"
+  else
+    log_info "Mode:    docker"
+    log_info "Image:   $REGISTRY/$IMAGE:latest"
+  fi
   echo ""
 
-  log_step "Copying files to server"
-  scp "$LOCAL_DIR/main.go"       "$SSH_TARGET:/opt/vpn-portal/"
-  scp "$LOCAL_DIR/go.mod"        "$SSH_TARGET:/opt/vpn-portal/"
-  scp "$LOCAL_DIR/manifest.json" "$SSH_TARGET:/opt/vpn-portal/"
-  scp -r "$LOCAL_DIR/static"     "$SSH_TARGET:/opt/vpn-portal/"
-  scp -r "$LOCAL_DIR/templates"  "$SSH_TARGET:/opt/vpn-portal/"
-  log_ok "Files copied"
-  echo ""
+  if [[ "$NO_DOCKER" == true ]]; then
+    log_step "Copying files to server"
+    scp "$LOCAL_DIR/main.go"       "$SSH_TARGET:/opt/vpn-portal/"
+    scp "$LOCAL_DIR/go.mod"        "$SSH_TARGET:/opt/vpn-portal/"
+    scp "$LOCAL_DIR/manifest.json" "$SSH_TARGET:/opt/vpn-portal/"
+    scp -r "$LOCAL_DIR/static"     "$SSH_TARGET:/opt/vpn-portal/"
+    scp -r "$LOCAL_DIR/templates"  "$SSH_TARGET:/opt/vpn-portal/"
+    log_ok "Files copied"
+    echo ""
 
-  log_step "Building and restarting on $HOST"
-  ssh "$SSH_TARGET" 'set -e
+    log_step "Building and restarting on $HOST"
+    ssh "$SSH_TARGET" 'set -e
 cd /opt/vpn-portal
 go mod tidy
 go build -o vpn-portal .
 systemctl restart vpn-portal
 systemctl status vpn-portal --no-pager'
 
-  echo ""
-  log_ok "vpn-portal updated and restarted on $HOST"
-  log_info "Logs: ssh $SSH_TARGET journalctl -u vpn-portal -f"
+    echo ""
+    log_ok "vpn-portal updated on $HOST"
+    log_info "Logs: ssh $SSH_TARGET journalctl -u vpn-portal -f"
+  else
+    log_step "Pulling latest image and restarting on $HOST"
+    ssh "$SSH_TARGET" "
+      docker pull $REGISTRY/$IMAGE:latest &&
+      docker restart vpn-portal &&
+      docker ps --filter name=vpn-portal --format 'table {{.Status}}'
+    "
+
+    echo ""
+    log_ok "vpn-portal updated on $HOST"
+    log_info "Logs: ssh $SSH_TARGET docker logs -f vpn-portal"
+  fi
+
   echo ""
   exit 0
 fi
 
+# ══════════════════════════════════════════════════════════════════════════════
+# INIT — inject secrets and restart
+# ══════════════════════════════════════════════════════════════════════════════
+if [[ "$COMMAND" == "init" ]]; then
+  echo ""
+  log_info "Host:    $SSH_TARGET"
+  echo ""
+
+  GOOGLE_CLIENT_ID=$(grep "^Environment=GOOGLE_CLIENT_ID=" "$LOCAL_DIR/vpn-portal.service" | cut -d= -f3-)
+  GOOGLE_CLIENT_SECRET=$(grep "^Environment=GOOGLE_CLIENT_SECRET=" "$LOCAL_DIR/vpn-portal.service" | cut -d= -f3-)
+  ALLOWED_DOMAINS=$(grep "^Environment=ALLOWED_DOMAINS=" "$LOCAL_DIR/vpn-portal.service" | cut -d= -f3-)
+  ADMIN_TOKEN=$(grep "^Environment=ADMIN_TOKEN=" "$LOCAL_DIR/vpn-portal.service" | cut -d= -f3-)
+
+  ERRORS=0
+  if [[ "$GOOGLE_CLIENT_ID" == *"<"* || -z "$GOOGLE_CLIENT_ID" ]];         then log_err "GOOGLE_CLIENT_ID not set in vpn-portal.service";     ERRORS=1; fi
+  if [[ "$GOOGLE_CLIENT_SECRET" == *"<"* || -z "$GOOGLE_CLIENT_SECRET" ]]; then log_err "GOOGLE_CLIENT_SECRET not set in vpn-portal.service"; ERRORS=1; fi
+  if [[ "$ALLOWED_DOMAINS" == *"<"* || -z "$ALLOWED_DOMAINS" ]];           then log_err "ALLOWED_DOMAINS not set in vpn-portal.service";       ERRORS=1; fi
+  if [[ "$ADMIN_TOKEN" == *"<"* || -z "$ADMIN_TOKEN" ]];                   then log_err "ADMIN_TOKEN not set in vpn-portal.service";           ERRORS=1; fi
+  [ $ERRORS -ne 0 ] && echo "" && echo "  Edit vpn-portal.service locally and set the required values first." && echo "" && exit 1
+
+  log_step "Injecting secrets on $HOST"
+  ssh "$SSH_TARGET" bash << ENDSSH
+set -e
+# Update systemd service file
+sed -i "s|Environment=GOOGLE_CLIENT_ID=.*|Environment=GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}|"             /etc/systemd/system/vpn-portal.service
+sed -i "s|Environment=GOOGLE_CLIENT_SECRET=.*|Environment=GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}|" /etc/systemd/system/vpn-portal.service
+sed -i "s|Environment=ALLOWED_DOMAINS=.*|Environment=ALLOWED_DOMAINS=${ALLOWED_DOMAINS}|"                 /etc/systemd/system/vpn-portal.service
+sed -i "s|Environment=ADMIN_TOKEN=.*|Environment=ADMIN_TOKEN=${ADMIN_TOKEN}|"                             /etc/systemd/system/vpn-portal.service
+
+# Update Docker env file if it exists
+if [ -f /etc/vpn-portal.env ]; then
+  sed -i "s|GOOGLE_CLIENT_ID=.*|GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}|"             /etc/vpn-portal.env
+  sed -i "s|GOOGLE_CLIENT_SECRET=.*|GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}|" /etc/vpn-portal.env
+  sed -i "s|ALLOWED_DOMAINS=.*|ALLOWED_DOMAINS=${ALLOWED_DOMAINS}|"                 /etc/vpn-portal.env
+  sed -i "s|ADMIN_TOKEN=.*|ADMIN_TOKEN=${ADMIN_TOKEN}|"                             /etc/vpn-portal.env
+fi
+
+# Restart whichever is running
+systemctl daemon-reload
+docker restart vpn-portal 2>/dev/null && echo "    docker container restarted" || \
+  systemctl restart vpn-portal 2>/dev/null && echo "    systemd service restarted" || \
+  echo "    nothing to restart"
+ENDSSH
+
+  log_ok "Secrets injected on $HOST"
+  echo ""
+  exit 0
+fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# DEPLOY
+# DEPLOY — fresh installation
 # ══════════════════════════════════════════════════════════════════════════════
 echo ""
-log_info "Host:    $SSH_TARGET:$SSH_PORT"
+log_info "Host:    $SSH_TARGET"
 log_info "Domain:  $DOMAIN"
 log_info "Subnet:  ${SUBNET}.0/24"
 log_info "Email:   $EMAIL"
+if [[ "$NO_DOCKER" == true ]]; then
+  log_info "Mode:    source (--no-docker)"
+else
+  log_info "Mode:    docker"
+  log_info "Image:   $REGISTRY/$IMAGE:latest"
+fi
 echo ""
 
-# ─── Copy files to server ─────────────────────────────────────────────────────
-log_step "Copying files to server"
+# ─── Copy files ───────────────────────────────────────────────────────────────
+log_step "Copying config files to server"
 ssh "$SSH_TARGET" "mkdir -p /tmp/vpn-portal"
-scp -q "$LOCAL_DIR/main.go"            "$SSH_TARGET:/tmp/vpn-portal/"
-scp -q "$LOCAL_DIR/go.mod"             "$SSH_TARGET:/tmp/vpn-portal/"
 scp -q "$LOCAL_DIR/nginx.conf"         "$SSH_TARGET:/tmp/vpn-portal/"
 scp -q "$LOCAL_DIR/vpn-portal.service" "$SSH_TARGET:/tmp/vpn-portal/"
-scp -q "$LOCAL_DIR/manifest.json"      "$SSH_TARGET:/tmp/vpn-portal/"
-scp -q -r "$LOCAL_DIR/static"          "$SSH_TARGET:/tmp/vpn-portal/"
-scp -q -r "$LOCAL_DIR/templates"       "$SSH_TARGET:/tmp/vpn-portal/"
+
+if [[ "$NO_DOCKER" == true ]]; then
+  scp -q "$LOCAL_DIR/main.go"            "$SSH_TARGET:/tmp/vpn-portal/"
+  scp -q "$LOCAL_DIR/go.mod"             "$SSH_TARGET:/tmp/vpn-portal/"
+  scp -q "$LOCAL_DIR/manifest.json"      "$SSH_TARGET:/tmp/vpn-portal/"
+  scp -q -r "$LOCAL_DIR/static"          "$SSH_TARGET:/tmp/vpn-portal/"
+  scp -q -r "$LOCAL_DIR/templates"       "$SSH_TARGET:/tmp/vpn-portal/"
+fi
 log_ok "Files copied"
 echo ""
 
@@ -166,10 +257,15 @@ log_step "Running remote deployment on $HOST"
 echo ""
 ssh "$SSH_TARGET" bash << REMOTE
 set -e
+export DEBIAN_FRONTEND=noninteractive
 
 echo "==> Installing dependencies"
 apt update -q
-apt install -y golang-go nginx certbot python3-certbot-nginx wireguard openresolv iptables-persistent > /dev/null
+$(if [[ "$NO_DOCKER" == true ]]; then
+  echo "apt install -y golang-go nginx certbot python3-certbot-nginx wireguard-tools resolvconf iptables-persistent > /dev/null"
+else
+  echo "apt install -y nginx certbot python3-certbot-nginx wireguard-tools resolvconf iptables-persistent docker.io > /dev/null"
+fi)
 echo "    done"
 
 echo "==> Setting up WireGuard"
@@ -183,19 +279,21 @@ else
   echo "    keys already exist — skipping"
 fi
 
-grep -qxF 'net.ipv4.ip_forward=1' /etc/sysctl.conf || echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-sysctl -qp
+echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-wireguard.conf
+sysctl -qp /etc/sysctl.d/99-wireguard.conf
 
 if [ ! -f /etc/wireguard/wg0.conf ]; then
+  NET_IF=\$(ip route show default | awk '/default/ {print \$5}' | head -1)
+  echo "    detected network interface: \${NET_IF}"
   cat > /etc/wireguard/wg0.conf << WGEOF
 [Interface]
 PrivateKey = \$(cat /etc/wireguard/server_private.key)
 Address = ${SUBNET}.1/24
 ListenPort = 51820
-PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o \${NET_IF} -j MASQUERADE
+PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o \${NET_IF} -j MASQUERADE
 WGEOF
-  echo "    config created"
+  echo "    config created (interface: \${NET_IF})"
 else
   echo "    config already exists — skipping"
 fi
@@ -204,14 +302,17 @@ systemctl enable --now wg-quick@wg0 2>/dev/null || true
 echo "    running on port 51820"
 
 echo "==> Setting up UDP 443 fallback"
-if ! iptables -t nat -C PREROUTING -i eth0 -p udp --dport 443 -j REDIRECT --to-port 51820 2>/dev/null; then
-  iptables -t nat -A PREROUTING -i eth0 -p udp --dport 443 -j REDIRECT --to-port 51820
+NET_IF=\$(ip route show default | awk '/default/ {print \$5}' | head -1)
+if ! iptables -t nat -C PREROUTING -i \${NET_IF} -p udp --dport 443 -j REDIRECT --to-port 51820 2>/dev/null; then
+  iptables -t nat -A PREROUTING -i \${NET_IF} -p udp --dport 443 -j REDIRECT --to-port 51820
   netfilter-persistent save > /dev/null
-  echo "    UDP 443 -> 51820 redirect added"
+  echo "    UDP 443 -> 51820 redirect added (interface: \${NET_IF})"
 else
   echo "    UDP 443 -> 51820 already exists — skipping"
 fi
 
+$(if [[ "$NO_DOCKER" == true ]]; then
+cat << 'NODOCKEREOF'
 echo "==> Building vpn-portal"
 mkdir -p /opt/vpn-portal
 cd /opt/vpn-portal
@@ -227,16 +328,70 @@ echo "    built"
 echo "==> Installing systemd service"
 cp /tmp/vpn-portal/vpn-portal.service /etc/systemd/system/
 
-SERVER_PUBLIC_KEY=\$(cat /etc/wireguard/server_public.key)
-SERVER_IP=\$(curl -s ifconfig.me)
+SERVER_PUBLIC_KEY=$(cat /etc/wireguard/server_public.key)
+SERVER_IP=$(curl -s -4 ifconfig.me)
 
-sed -i "s|WG_SERVER_PUBLIC_KEY=.*|WG_SERVER_PUBLIC_KEY=\${SERVER_PUBLIC_KEY}|" /etc/systemd/system/vpn-portal.service
-sed -i "s|WG_SERVER_ENDPOINT=.*|WG_SERVER_ENDPOINT=\${SERVER_IP}|"             /etc/systemd/system/vpn-portal.service
-sed -i "s|VPN_SUBNET=.*|VPN_SUBNET=${SUBNET}|"                                 /etc/systemd/system/vpn-portal.service
-sed -i "s|BASE_URL=.*|BASE_URL=https://${DOMAIN}|"                             /etc/systemd/system/vpn-portal.service
+sed -i "s|WG_SERVER_PUBLIC_KEY=.*|WG_SERVER_PUBLIC_KEY=${SERVER_PUBLIC_KEY}|" /etc/systemd/system/vpn-portal.service
+sed -i "s|WG_SERVER_ENDPOINT=.*|WG_SERVER_ENDPOINT=${SERVER_IP}|"             /etc/systemd/system/vpn-portal.service
+sed -i "s|VPN_SUBNET=.*|VPN_SUBNET=SUBNET_PLACEHOLDER|"                       /etc/systemd/system/vpn-portal.service
+sed -i "s|BASE_URL=.*|BASE_URL=https://DOMAIN_PLACEHOLDER|"                   /etc/systemd/system/vpn-portal.service
 systemctl daemon-reload
 systemctl enable vpn-portal
-echo "    installed"
+systemctl start vpn-portal
+echo "    running"
+NODOCKEREOF
+else
+cat << 'DOCKEREOF'
+echo "==> Authenticating with DO Container Registry"
+echo "DOTOKEN_PLACEHOLDER" | docker login registry.digitalocean.com \
+  --username "DOTOKEN_PLACEHOLDER" \
+  --password-stdin 2>/dev/null
+echo "    authenticated"
+
+echo "==> Pulling vpn-portal image"
+docker pull REGISTRY_PLACEHOLDER/IMAGE_PLACEHOLDER:latest
+echo "    pulled"
+
+echo "==> Creating env file"
+SERVER_PUBLIC_KEY=$(cat /etc/wireguard/server_public.key)
+SERVER_IP=$(curl -s -4 ifconfig.me)
+
+cat > /etc/vpn-portal.env << EOF
+WG_SERVER_PUBLIC_KEY=${SERVER_PUBLIC_KEY}
+WG_SERVER_ENDPOINT=${SERVER_IP}
+VPN_SUBNET=SUBNET_PLACEHOLDER
+BASE_URL=https://DOMAIN_PLACEHOLDER
+WG_INTERFACE=wg0
+STATE_FILE=/etc/wireguard/peers/state.json
+PORT=8080
+GOOGLE_CLIENT_ID=<your_google_client_id>
+GOOGLE_CLIENT_SECRET=<your_google_client_secret>
+ALLOWED_DOMAINS=<your_allowed_domains>
+ADMIN_TOKEN=<your_secure_admin_token>
+EOF
+chmod 600 /etc/vpn-portal.env
+
+echo "==> Starting vpn-portal container"
+docker run -d \
+  --name vpn-portal \
+  --restart unless-stopped \
+  --network host \
+  --env-file /etc/vpn-portal.env \
+  -v /etc/wireguard:/etc/wireguard \
+  REGISTRY_PLACEHOLDER/IMAGE_PLACEHOLDER:latest
+echo "    running"
+
+echo "==> Installing systemd service (reference only)"
+cp /tmp/vpn-portal/vpn-portal.service /etc/systemd/system/
+SERVER_PUBLIC_KEY=$(cat /etc/wireguard/server_public.key)
+SERVER_IP=$(curl -s -4 ifconfig.me)
+sed -i "s|WG_SERVER_PUBLIC_KEY=.*|WG_SERVER_PUBLIC_KEY=${SERVER_PUBLIC_KEY}|" /etc/systemd/system/vpn-portal.service
+sed -i "s|WG_SERVER_ENDPOINT=.*|WG_SERVER_ENDPOINT=${SERVER_IP}|"             /etc/systemd/system/vpn-portal.service
+sed -i "s|VPN_SUBNET=.*|VPN_SUBNET=SUBNET_PLACEHOLDER|"                       /etc/systemd/system/vpn-portal.service
+sed -i "s|BASE_URL=.*|BASE_URL=https://DOMAIN_PLACEHOLDER|"                   /etc/systemd/system/vpn-portal.service
+systemctl daemon-reload
+DOCKEREOF
+fi)
 
 echo "==> Installing nginx"
 cp /tmp/vpn-portal/nginx.conf /etc/nginx/sites-available/vpn-portal
@@ -251,12 +406,22 @@ echo "==> Obtaining SSL certificate"
 certbot --nginx -d ${DOMAIN} --non-interactive --agree-tos -m ${EMAIL} -q
 systemctl reload nginx
 echo "    done"
-
-echo "==> Starting vpn-portal"
-systemctl start vpn-portal
-sleep 1
-systemctl is-active --quiet vpn-portal && echo "    running" || echo "    FAILED — check: journalctl -u vpn-portal"
 REMOTE
+
+# ─── Fix placeholders in remote script output ─────────────────────────────────
+ssh "$SSH_TARGET" bash << FIXEOF
+set -e
+for f in /etc/systemd/system/vpn-portal.service /etc/vpn-portal.env; do
+  [ -f "\$f" ] && sed -i \
+    -e "s|SUBNET_PLACEHOLDER|${SUBNET}|g" \
+    -e "s|DOMAIN_PLACEHOLDER|${DOMAIN}|g" \
+    -e "s|DOTOKEN_PLACEHOLDER|${DO_API_TOKEN:-}|g" \
+    -e "s|REGISTRY_PLACEHOLDER|${REGISTRY}|g" \
+    -e "s|IMAGE_PLACEHOLDER|${IMAGE}|g" \
+    "\$f"
+done
+systemctl daemon-reload 2>/dev/null || true
+FIXEOF
 
 # ─── Local summary ────────────────────────────────────────────────────────────
 echo ""
@@ -265,17 +430,30 @@ echo -e "\033[38;5;28m        ░▒▓ Deployment Complete ▓▒░\033[0m"
 echo ""
 log_ok "Portal:  https://${DOMAIN}"
 log_ok "Ports:   UDP 51820 + UDP 443 (fallback)"
+if [[ "$NO_DOCKER" == true ]]; then
+  log_ok "Mode:    source build"
+else
+  log_ok "Image:   $REGISTRY/$IMAGE:latest"
+fi
 echo ""
 echo -e "\033[38;5;28m        ░▒▓ Next Steps ▓▒░\033[0m"
 echo ""
 log_info "1. Add OAuth redirect URI in Google Cloud Console:"
 echo -e "\033[38;5;82m           https://${DOMAIN}/auth/callback\033[0m"
-log_info "2. Add server IP to VPN_ALLOWED_IPS in DO app spec"
-log_info "3. Set ADMIN_TOKEN in vpn-portal.service on the server"
+log_info "2. Push secrets:"
+echo -e "\033[38;5;82m           $0 init --host $HOST\033[0m"
+log_info "3. Add server IP to VPN_ALLOWED_IPS in DO app spec"
 echo ""
 echo -e "\033[38;5;28m        ░▒▓ Commands ▓▒░\033[0m"
 echo ""
-log_info "status:  ssh $SSH_TARGET systemctl status vpn-portal"
-log_info "logs:    ssh $SSH_TARGET journalctl -u vpn-portal -f"
+if [[ "$NO_DOCKER" == true ]]; then
+  log_info "status:  ssh $SSH_TARGET systemctl status vpn-portal"
+  log_info "logs:    ssh $SSH_TARGET journalctl -u vpn-portal -f"
+  log_info "update:  $0 update --host $HOST --no-docker"
+else
+  log_info "status:  ssh $SSH_TARGET docker ps"
+  log_info "logs:    ssh $SSH_TARGET docker logs -f vpn-portal"
+  log_info "update:  $0 update --host $HOST"
+fi
 log_info "wg:      ssh $SSH_TARGET wg show"
 echo ""
