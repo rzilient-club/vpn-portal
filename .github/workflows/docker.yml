@@ -19,10 +19,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          DO_API_TOKEN: op://Engineering/API_Production/DO_API_TOKEN
+
       - name: Install doctl
         uses: digitalocean/action-doctl@v2
         with:
-          token: ${{ secrets.DO_API_TOKEN }}
+          token: ${{ env.DO_API_TOKEN }}
 
       - name: Log in to DO Container Registry
         run: doctl registry login --expiry-seconds 1200
