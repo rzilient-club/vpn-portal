@@ -2,7 +2,6 @@
 /.idea/modules.xml
 /.idea/vcs.xml
 /.idea/vpn-portal.iml
-/go.sum
 /.idea/go.imports.xml
 /vpn-portal
 /.vpn-portal.service
