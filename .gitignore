@@ -12,7 +12,6 @@
 # Environment
 .env
 
-
 # WireGuard configs (contain private keys)
 *-vpn.conf
 *-vpn*.conf
