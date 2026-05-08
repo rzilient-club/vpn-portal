@@ -27,3 +27,4 @@ vpn-portal
 # OS
 .DS_Store
 Thumbs.dbvpn-portal.service
+vpn-portal.service
