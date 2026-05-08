@@ -134,17 +134,39 @@ cp .env.example .env
 go run main.go
 ```
 
-### Build Docker image locally
-```bash
-docker build -t vpn-portal .
-docker run --rm -p 8080:8080 --env-file .env vpn-portal
+### Docker local workflow
+
+```fish
+# Build + push to registry + run locally (default)
+./docker-run.fish
+
+# Build image only
+./docker-run.fish build
+
+# Build + push to registry
+./docker-run.fish push
+
+# Pull latest from registry and run locally
+./docker-run.fish run
 ```
+
+> Requires `op` (1Password CLI) to fetch `DO_API_TOKEN` from `op://Engineering/API_Production/DO_API_TOKEN`
 
 ### CI/CD
 On every push to `main`, GitHub Actions:
 1. Builds the Docker image
 2. Tags it as `latest` and with the short commit SHA
 3. Pushes to `registry.digitalocean.com/rzilient/vpn-portal`
+
+## Deployment commands
+
+| Command | Description |
+|---|---|
+| `./deploy.sh deploy --host <ip> --domain <d> --email <e>` | Fresh install using Docker |
+| `./deploy.sh deploy --host <ip> --domain <d> --email <e> --no-docker` | Fresh install, build from source |
+| `./deploy.sh update --host <ip>` | Pull latest Docker image + restart |
+| `./deploy.sh update --host <ip> --no-docker` | Copy files + rebuild + restart |
+| `./deploy.sh init --host <ip>` | Push secrets + restart |
 
 ## Project structure
 

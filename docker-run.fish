@@ -54,7 +54,7 @@ function do_push
   log_ok "Token fetched"
 
   log_step "Authenticating with DO Container Registry"
-  echo $DO_API_TOKEN | docker login registry.digitalocean.com     --username $DO_API_TOKEN     --password-stdin 2>/dev/null
+  echo $DO_API_TOKEN | docker login registry.digitalocean.com     --username $DO_API_TOKEN     --password-stdin
   log_ok "Authenticated"
 
   log_step "Pushing to registry"

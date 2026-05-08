@@ -262,7 +262,11 @@ export DEBIAN_FRONTEND=noninteractive
 echo "==> Installing dependencies"
 apt update -q
 $(if [[ "$NO_DOCKER" == true ]]; then
-  echo "apt install -y golang-go nginx certbot python3-certbot-nginx wireguard-tools resolvconf iptables-persistent > /dev/null"
+  echo "apt install -y nginx certbot python3-certbot-nginx wireguard-tools resolvconf iptables-persistent wget tar > /dev/null"
+  echo "wget -q https://go.dev/dl/go1.25.0.linux-amd64.tar.gz -O /tmp/go.tar.gz"
+  echo "rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tar.gz && rm /tmp/go.tar.gz"
+  echo "export PATH=\\$PATH:/usr/local/go/bin"
+  echo "echo 'export PATH=\\$PATH:/usr/local/go/bin' >> /etc/profile.d/go.sh"
 else
   echo "apt install -y nginx certbot python3-certbot-nginx wireguard-tools resolvconf iptables-persistent docker.io > /dev/null"
 fi)
@@ -314,6 +318,7 @@ fi
 $(if [[ "$NO_DOCKER" == true ]]; then
 cat << 'NODOCKEREOF'
 echo "==> Building vpn-portal"
+export PATH=$PATH:/usr/local/go/bin
 mkdir -p /opt/vpn-portal
 cd /opt/vpn-portal
 cp /tmp/vpn-portal/main.go .
