@@ -1,26 +1,30 @@
+# ── Reference file — secrets are injected via: ./deploy.sh init --host x.x.x.x
+# ── The actual process is managed by Docker, not systemd
+# ── This file is used only to store and transport secrets
+
 [Unit]
-Description=rzilient VPN Portal
-After=network.target wg-quick@wg0.service
+Description=rzilient VPN Portal (Docker)
+After=network.target wg-quick@wg0.service docker.service
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/vpn-portal
-ExecStart=/opt/vpn-portal/vpn-portal
+ExecStart=/usr/bin/docker start -a vpn-portal
+ExecStop=/usr/bin/docker stop vpn-portal
 Restart=on-failure
 RestartSec=5
 
-Environment=GOOGLE_CLIENT_ID=<your_google_client_id>
-Environment=GOOGLE_CLIENT_SECRET=<your_google_client_secret>
-Environment=ALLOWED_DOMAINS=<your_allowed_domains>
-Environment=BASE_URL=https://<your_vpn_domain>
-Environment=WG_INTERFACE=wg0
-Environment=WG_SERVER_PUBLIC_KEY=<auto_injected_by_deploy_script>
-Environment=WG_SERVER_ENDPOINT=<auto_injected_by_deploy_script>
+# ── Auto-injected by deploy script ────────────────────────────────────────────
+Environment=WG_SERVER_PUBLIC_KEY=<auto_injected>
+Environment=WG_SERVER_ENDPOINT=<auto_injected>
+Environment=BASE_URL=<auto_injected>
 Environment=VPN_SUBNET=10.8.0
-Environment=STATE_FILE=/etc/wireguard/peers/state.json
-Environment=PORT=8080
-Environment=ADMIN_TOKEN=<your_secure_admin_token>
+
+# ── Set manually via: ./deploy.sh init --host x.x.x.x ────────────────────────
+Environment=GOOGLE_CLIENT_ID=REDACTED.apps.googleusercontent.com
+Environment=GOOGLE_CLIENT_SECRET=GOCSPX-REDACTED
+Environment=ALLOWED_DOMAINS=rzilient.club,rzilient.tech,rzilient.support
+Environment=ADMIN_TOKEN=2f3c46d7deb22aa51aaf6e5ccb46b0a2
 
 [Install]
 WantedBy=multi-user.target
