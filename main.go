@@ -336,23 +336,27 @@ func sendMagicLinkEmail(toEmail, magicURL string) error {
 		return fmt.Errorf("smtp not configured")
 	}
 
-	from := smtpFrom
-	if from == "" {
-		from = smtpUsername
+	// Use plain email address for SMTP envelope (no display name)
+	fromAddr := smtpUsername
+	// Use display name for headers if configured
+	fromHeader := smtpFrom
+	if fromHeader == "" {
+		fromHeader = smtpUsername
 	}
 
 	subject := "Your VPN login link"
-	body := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"+
-		`<p>Click the link below to log in to the VPN portal. This link expires in <strong>1 hour</strong>.</p>`+
-		`<p><a href="%s" style="background:#B4EA1F;color:#0a0a0a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Log in to VPN portal</a></p>`+
-		`<p style="color:#888;font-size:12px;">If you did not request this, ignore this email.</p>`,
-		from, toEmail, subject, magicURL,
+	msg := fmt.Sprintf(
+		"From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"+
+			`<p>Click the link below to log in to the VPN portal. This link expires in <strong>1 hour</strong>.</p>`+
+			`<p><a href="%s" style="background:#B4EA1F;color:#0a0a0a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Log in to VPN portal</a></p>`+
+			`<p style="color:#888;font-size:12px;">If you did not request this, ignore this email.</p>`,
+		fromHeader, toEmail, subject, magicURL,
 	)
 
 	auth := smtp.PlainAuth("", smtpUsername, smtpPassword, smtpHost)
 	addr := smtpHost + ":" + smtpPort
 
-	return smtp.SendMail(addr, auth, from, []string{toEmail}, []byte(body))
+	return smtp.SendMail(addr, auth, fromAddr, []string{toEmail}, []byte(msg))
 }
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
