@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="theme-color" content="#0a0a0a">
+    <title>_rzilient VPN — Check your email</title>
+    <link rel="icon" type="image/x-icon" href="https://resources.rzilient.tech/assets/images/rzilient-sidebar-small-logo-lime.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --lime: #B4EA1F;
+            --lime-dim: rgba(180, 234, 31, 0.12);
+            --bg: #0a0a0a;
+            --surface: #111111;
+            --surface-2: #1a1a1a;
+            --border: #222222;
+            --text: #e8e8e8;
+            --text-dim: #888888;
+            --text-muted: #555555;
+            --green: #22c55e;
+            --green-dim: rgba(34, 197, 94, 0.1);
+            --mono: 'JetBrains Mono', ui-monospace, monospace;
+            --sans: 'Work Sans', -apple-system, sans-serif;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .grid-bg { position: fixed; inset: 0; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 60px 60px; opacity: 0.15; pointer-events: none; mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black 20%, transparent 70%); }
+        .card { position: relative; z-index: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 40px; width: 100%; max-width: 400px; margin: 24px; text-align: center; }
+        .logo { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 32px; }
+        .logo img { width: 28px; height: 28px; }
+        .logo span { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text); }
+        .logo .accent { color: var(--lime); }
+        .icon { font-size: 40px; margin-bottom: 20px; }
+        h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 12px; }
+        h1 .accent { background: linear-gradient(135deg, var(--lime) 0%, #8BC34A 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .sub { font-size: 14px; color: var(--text-dim); line-height: 1.7; margin-bottom: 12px; }
+        .email-badge { display: inline-block; font-family: var(--mono); font-size: 13px; color: var(--green); background: var(--green-dim); border: 1px solid rgba(34,197,94,0.2); padding: 6px 14px; border-radius: 6px; margin: 12px 0 24px; }
+        .note { font-family: var(--mono); font-size: 11px; color: var(--text-muted); margin-bottom: 28px; line-height: 1.6; }
+        .btn-back { display: inline-block; font-family: var(--mono); font-size: 11px; color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
+        .btn-back:hover { color: var(--lime); }
+        .btn-resend { display: inline-block; font-family: var(--mono); font-size: 11px; color: var(--text-muted); text-decoration: none; transition: color 0.2s; margin-right: 20px; }
+        .btn-resend:hover { color: var(--lime); }
+    </style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div class="card">
+    <div class="logo">
+        <img src="https://resources.rzilient.tech/assets/images/rzilient-sidebar-small-logo-lime.svg" alt="_rzilient">
+        <span>_rzilient<span class="accent">.vpn</span></span>
+    </div>
+    <div class="icon">✉</div>
+    <h1>_check your <span class="accent">email</span></h1>
+    <p class="sub">We sent a login link to</p>
+    <div class="email-badge">{{ .Email }}</div>
+    <p class="note">The link expires in 1 hour.<br>If you don't see it, check your spam folder.</p>
+    <a href="/auth/magic" class="btn-resend">← send again</a>
+    <a href="/auth/login" class="btn-back">use Google instead</a>
+</div>
+</body>
+</html>

@@ -1,5 +1,3 @@
-const TOKEN = new URLSearchParams(window.location.search).get('token') || '';
-
 // ── Toast ───────────────────────────────────────────────────────────────────
 let toastTimer;
 function showToast(msg, type = 'success') {
@@ -53,7 +51,7 @@ function filterPeers() {
 // ── Copy config ─────────────────────────────────────────────────────────────
 async function copyConfig(pubKey, btn) {
   try {
-    const res = await fetch('/admin/config?token=' + TOKEN + '&key=' + encodeURIComponent(pubKey));
+    const res = await fetch('/admin/config?key=' + encodeURIComponent(pubKey));
     if (!res.ok) throw new Error('Not found');
     const config = await res.text();
     await navigator.clipboard.writeText(config);
@@ -110,7 +108,6 @@ function timeAgo(ts) {
   return Math.floor(diff / 86400) + 'd ago';
 }
 
-// Tick last-seen every second using cached timestamps
 function tickLastSeen() {
   document.querySelectorAll('tr[data-pubkey]').forEach(row => {
     const key = row.dataset.pubkey;
@@ -128,7 +125,7 @@ async function fetchStats() {
   label.textContent = 'updating...';
 
   try {
-    const res = await fetch('/admin/stats?token=' + TOKEN);
+    const res = await fetch('/admin/stats');
     if (!res.ok) throw new Error('Failed');
     const stats = await res.json();
 
@@ -174,7 +171,7 @@ async function checkVersion() {
   if (!badge) return;
 
   try {
-    const res = await fetch('/admin/version?token=' + TOKEN);
+    const res = await fetch('/admin/version');
     if (!res.ok) throw new Error('Failed');
     const data = await res.json();
 
@@ -208,7 +205,7 @@ async function triggerUpdate() {
   badge.className = 'version-badge';
 
   try {
-    const res = await fetch('/admin/update?token=' + TOKEN, { method: 'POST' });
+    const res = await fetch('/admin/update', { method: 'POST' });
 
     if (res.status === 409) {
       showToast('Update already in progress', 'error');
@@ -229,16 +226,6 @@ async function triggerUpdate() {
 
 // ── Peer counters ────────────────────────────────────────────────────────────
 function updateCounters() {
-  const rows = document.querySelectorAll('tr[data-pubkey]');
-  let total = 0, active = 0, blocked = 0;
-
-  rows.forEach(row => {
-    if (row.classList.contains('hidden-row')) return;
-    total++;
-    if (row.dataset.blocked === 'true') blocked++;
-    else active++;
-  });
-
   const elTotal   = document.getElementById('statTotal');
   const elActive  = document.getElementById('statActive');
   const elBlocked = document.getElementById('statBlocked');
@@ -267,14 +254,13 @@ function formatBytes(b) {
   return b.toFixed(1) + ' ' + units[i];
 }
 
-// ── Sort by column ────────────────────────────────────────────────────────
+// ── Sort by column ────────────────────────────────────────────────────────────
 let sortState = { col: null, dir: 1 };
 
 function sortTable(col) {
   const tbody = document.querySelector('tbody');
   const rows  = Array.from(tbody.querySelectorAll('tr[data-pubkey]'));
 
-  // Toggle direction if same column
   if (sortState.col === col) {
     sortState.dir *= -1;
   } else {
@@ -282,7 +268,6 @@ function sortTable(col) {
     sortState.dir = 1;
   }
 
-  // Update header indicators
   document.querySelectorAll('thead th.sortable').forEach(th => {
     th.classList.remove('sort-asc', 'sort-desc');
     if (th.dataset.col === col) {
@@ -321,11 +306,10 @@ function sortTable(col) {
   rows.forEach(row => tbody.appendChild(row));
 }
 
-// Track raw bytes for sorting
+// ── Track raw bytes for sorting ───────────────────────────────────────────────
 let lastRxBytes = {};
 
-// Patch fetchStats to update totals and raw bytes
-const _origFetchStats = fetchStats;
+// ── Patched fetchStats — updates totals, raw bytes, counters, sort ────────────
 fetchStats = async function() {
   const dot   = document.getElementById('refreshDot');
   const label = document.getElementById('refreshLabel');
@@ -333,7 +317,7 @@ fetchStats = async function() {
   label.textContent = 'updating...';
 
   try {
-    const res = await fetch('/admin/stats?token=' + TOKEN);
+    const res = await fetch('/admin/stats');
     if (!res.ok) throw new Error('Failed');
     const stats = await res.json();
 
@@ -370,7 +354,6 @@ fetchStats = async function() {
     updateCounters();
     label.textContent = 'updated ' + new Date().toLocaleTimeString();
 
-    // Re-apply sort if active
     if (sortState.col) sortTable(sortState.col);
 
   } catch(e) {
@@ -380,8 +363,7 @@ fetchStats = async function() {
   }
 };
 
-// Initial fetch + poll every 30s + tick every second
-// Initial fetch + poll every 30s + tick every second
+// ── Init ─────────────────────────────────────────────────────────────────────
 updateCounters();
 fetchStats();
 checkVersion();
