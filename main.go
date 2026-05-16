@@ -531,6 +531,7 @@ func handleAdmin(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, tmplAdmin, map[string]interface{}{
 		"Peers": peers,
 		"Token": token,
+		"Error": r.URL.Query().Get("error"),
 	})
 }
 
@@ -638,6 +639,62 @@ func handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	fmt.Fprint(w, buildConfig(peer))
+}
+
+func handleAdminAddPeer(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
+		return
+	}
+
+	email := strings.TrimSpace(r.FormValue("email"))
+	name := strings.TrimSpace(r.FormValue("name"))
+
+	if email == "" || name == "" {
+		http.Redirect(w, r, "/admin?token="+token+"&error=missing_fields", http.StatusFound)
+		return
+	}
+
+	stateMu.Lock()
+	defer stateMu.Unlock()
+
+	if findPeerByEmail(email) != nil {
+		http.Redirect(w, r, "/admin?token="+token+"&error=already_exists", http.StatusFound)
+		return
+	}
+
+	ip := nextIP()
+	if ip == "" {
+		http.Redirect(w, r, "/admin?token="+token+"&error=no_ips", http.StatusFound)
+		return
+	}
+
+	privKey, pubKey, err := generateKeyPair()
+	if err != nil {
+		http.Redirect(w, r, "/admin?token="+token+"&error=keygen_failed", http.StatusFound)
+		return
+	}
+
+	if err := addWGPeer(pubKey, ip); err != nil {
+		http.Redirect(w, r, "/admin?token="+token+"&error=wg_failed", http.StatusFound)
+		return
+	}
+
+	peer := Peer{
+		Email:      email,
+		Name:       name,
+		PublicKey:  pubKey,
+		PrivateKey: privKey,
+		AssignedIP: ip,
+		CreatedAt:  time.Now(),
+	}
+	state.Peers = append(state.Peers, peer)
+	saveState()
+	log.Printf("[admin] added peer %s (%s)", email, pubKey[:8])
+
+	http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
 }
 
 func handleAdminStats(w http.ResponseWriter, r *http.Request) {
@@ -778,6 +835,7 @@ func main() {
 	mux.HandleFunc("/admin/revoke", adminAuth(handleAdminRevoke))
 	mux.HandleFunc("/admin/stats", adminAuth(handleAdminStats))
 	mux.HandleFunc("/admin/config", adminAuth(handleAdminConfig))
+	mux.HandleFunc("/admin/add-peer", adminAuth(handleAdminAddPeer))
 
 	addr := ":" + port
 	log.Printf("Starting VPN portal on %s", addr)
