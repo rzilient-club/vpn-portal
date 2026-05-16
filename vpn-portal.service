@@ -25,9 +25,11 @@ Environment=GOOGLE_CLIENT_ID=REDACTED.apps.googleusercontent.com
 Environment=GOOGLE_CLIENT_SECRET=GOCSPX-REDACTED
 Environment=ALLOWED_DOMAINS=rzilient.club,rzilient.tech,rzilient.support
 Environment=ADMIN_TOKEN=2f3c46d7deb22aa51aaf6e5ccb46b0a2
-Environment=MAILGUN_API_KEY=b371fe29c180cad197150200a4ed9094-62916a6c-6377b95d
-Environment=MAILGUN_DOMAIN=rzilient.club
-Environment=MAILGUN_FROM=VPN Portal tech@rzilient.club
+Environment=SMTP_HOST=smtp.eu.mailgun.org
+Environment=SMTP_PORT=587
+Environment=SMTP_USERNAME=postmaster@rzilient.club
+Environment=SMTP_PASSWORD=b371fe29c180cad197150200a4ed9094-62916a6c-6377b95d
+Environment=SMTP_FROM=VPN Portal tech@rzilient.club
 
 [Install]
 WantedBy=multi-user.target

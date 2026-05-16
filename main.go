@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/smtp"
 	"os"
 	"os/exec"
 	"strings"
@@ -36,9 +37,11 @@ var (
 	sessionSecret      = getEnv("SESSION_SECRET", "change-me-in-production")
 	port               = getEnv("PORT", "8080")
 	adminToken         = getEnv("ADMIN_TOKEN", "")
-	mailgunAPIKey      = getEnv("MAILGUN_API_KEY", "")
-	mailgunDomain      = getEnv("MAILGUN_DOMAIN", "")
-	mailgunFrom        = getEnv("MAILGUN_FROM", "")
+	smtpHost           = getEnv("SMTP_HOST", "smtp.eu.mailgun.org")
+	smtpPort           = getEnv("SMTP_PORT", "587")
+	smtpUsername       = getEnv("SMTP_USERNAME", "")
+	smtpPassword       = getEnv("SMTP_PASSWORD", "")
+	smtpFrom           = getEnv("SMTP_FROM", "")
 )
 
 var oauthConfig = &oauth2.Config{
@@ -326,49 +329,30 @@ func clearAdminSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ─── Mailgun ──────────────────────────────────────────────────────────────────
+// ─── SMTP ─────────────────────────────────────────────────────────────────────
 
 func sendMagicLinkEmail(toEmail, magicURL string) error {
-	if mailgunAPIKey == "" || mailgunDomain == "" {
-		return fmt.Errorf("mailgun not configured")
+	if smtpUsername == "" || smtpPassword == "" {
+		return fmt.Errorf("smtp not configured")
 	}
-	body := strings.NewReader(fmt.Sprintf(
-		"from=%s&to=%s&subject=%s&text=%s&html=%s",
-		urlEncode(mailgunFrom),
-		urlEncode(toEmail),
-		urlEncode("Your VPN login link"),
-		urlEncode(fmt.Sprintf("Click this link to log in to the VPN portal (expires in 1 hour):\n\n%s\n\nIf you did not request this, ignore this email.", magicURL)),
-		urlEncode(fmt.Sprintf(`<p>Click the link below to log in to the VPN portal. This link expires in <strong>1 hour</strong>.</p><p><a href="%s">Log in to VPN portal</a></p><p>If you did not request this, ignore this email.</p>`, magicURL)),
-	))
 
-	req, err := http.NewRequest("POST",
-		fmt.Sprintf("https://api.mailgun.net/v3/%s/messages", mailgunDomain),
-		body,
+	from := smtpFrom
+	if from == "" {
+		from = smtpUsername
+	}
+
+	subject := "Your VPN login link"
+	body := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"+
+		`<p>Click the link below to log in to the VPN portal. This link expires in <strong>1 hour</strong>.</p>`+
+		`<p><a href="%s" style="background:#B4EA1F;color:#0a0a0a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Log in to VPN portal</a></p>`+
+		`<p style="color:#888;font-size:12px;">If you did not request this, ignore this email.</p>`,
+		from, toEmail, subject, magicURL,
 	)
-	if err != nil {
-		return err
-	}
-	req.SetBasicAuth("api", mailgunAPIKey)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+	auth := smtp.PlainAuth("", smtpUsername, smtpPassword, smtpHost)
+	addr := smtpHost + ":" + smtpPort
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("mailgun returned %d", resp.StatusCode)
-	}
-	return nil
-}
-
-func urlEncode(s string) string {
-	return strings.NewReplacer(
-		" ", "+", "@", "%40", ":", "%3A", "/", "%2F",
-		"?", "%3F", "=", "%3D", "&", "%26", "\n", "%0A",
-		"<", "%3C", ">", "%3E", `"`, "%22",
-	).Replace(s)
+	return smtp.SendMail(addr, auth, from, []string{toEmail}, []byte(body))
 }
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
@@ -1080,9 +1064,11 @@ func init() {
 	sessionSecret = getEnv("SESSION_SECRET", "change-me-in-production")
 	port = getEnv("PORT", "8080")
 	adminToken = getEnv("ADMIN_TOKEN", "")
-	mailgunAPIKey = getEnv("MAILGUN_API_KEY", "")
-	mailgunDomain = getEnv("MAILGUN_DOMAIN", "")
-	mailgunFrom = getEnv("MAILGUN_FROM", "")
+	smtpHost = getEnv("SMTP_HOST", "smtp.eu.mailgun.org")
+	smtpPort = getEnv("SMTP_PORT", "587")
+	smtpUsername = getEnv("SMTP_USERNAME", "")
+	smtpPassword = getEnv("SMTP_PASSWORD", "")
+	smtpFrom = getEnv("SMTP_FROM", "")
 
 	funcMap := template.FuncMap{
 		"add": func(a, b int) int { return a + b },
