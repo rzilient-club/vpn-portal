@@ -761,10 +761,16 @@ func main() {
 	mux.HandleFunc("/auth/login", handleLoginStart)
 	mux.HandleFunc("/auth/callback", handleLoginCallback)
 	mux.HandleFunc("/auth/logout", handleLogout)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"status":"ok","service":"vpn-portal"}`)
+	})
 	mux.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/manifest+json")
 		http.ServeFile(w, r, "manifest.json")
 	})
+
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	mux.HandleFunc("/admin", adminAuth(handleAdmin))
 	mux.HandleFunc("/admin/block", adminAuth(handleAdminBlock))
