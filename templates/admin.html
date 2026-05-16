@@ -43,6 +43,7 @@
             <span>_rzilient<span class="accent">.vpn</span></span>
         </a>
         <span class="admin-badge">// admin</span>
+        <span id="versionBadge" class="version-badge">checking...</span>
     </nav>
 
     <div class="header">
@@ -88,6 +89,34 @@
 
     <!-- Toast -->
     <div class="toast" id="toast"></div>
+
+    <!-- Error banner -->
+    {{ if .Error }}
+    <div class="error-banner">
+        {{ if eq .Error "missing_fields" }}✗ Email and name are required.
+        {{ else if eq .Error "already_exists" }}✗ A peer with this email already exists.
+        {{ else if eq .Error "no_ips" }}✗ No available IP addresses in the subnet.
+        {{ else if eq .Error "keygen_failed" }}✗ Failed to generate WireGuard keys.
+        {{ else if eq .Error "wg_failed" }}✗ Failed to add peer to WireGuard.
+        {{ else }}✗ An error occurred: {{ .Error }}{{ end }}
+    </div>
+    {{ end }}
+
+    <!-- Add peer -->
+    <div class="add-peer-card">
+        <h3>// add peer</h3>
+        <form class="add-peer-form" method="POST" action="/admin/add-peer?token={{ .Token }}">
+            <div class="add-peer-field">
+                <label>Email</label>
+                <input class="add-peer-input" type="email" name="email" placeholder="user@company.com" required>
+            </div>
+            <div class="add-peer-field">
+                <label>Name</label>
+                <input class="add-peer-input" type="text" name="name" placeholder="Full name" required>
+            </div>
+            <button type="submit" class="btn-add-peer">+ add peer</button>
+        </form>
+    </div>
 
     <!-- Peers table -->
     <div class="table-wrap">
