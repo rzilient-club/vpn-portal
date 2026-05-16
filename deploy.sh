@@ -217,8 +217,11 @@ if docker ps -aq --filter name=vpn-portal | grep -q .; then
     --name vpn-portal \
     --restart unless-stopped \
     --network host \
+    --cap-add NET_ADMIN \
     --env-file /etc/vpn-portal.env \
     -v /etc/wireguard:/etc/wireguard \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v /usr/local/bin/vpn-update:/usr/local/bin/vpn-update \
     ${REGISTRY}/${IMAGE}:latest
   echo "    container recreated with new secrets"
 else
@@ -413,8 +416,35 @@ docker run -d \
   --cap-add NET_ADMIN \
   --env-file /etc/vpn-portal.env \
   -v /etc/wireguard:/etc/wireguard \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /usr/local/bin/vpn-update:/usr/local/bin/vpn-update \
   ${REGISTRY}/${IMAGE}:latest
 echo "    running"
+
+echo "==> Installing vpn-update script"
+cat > /usr/local/bin/vpn-update << 'UPDATEEOF'
+#!/bin/bash
+set -e
+REGISTRY="registry.digitalocean.com/rzilient-do-containers"
+IMAGE="vpn-portal"
+doctl registry login
+docker pull $REGISTRY/$IMAGE:latest
+docker stop vpn-portal
+docker rm vpn-portal
+docker run -d \
+  --name vpn-portal \
+  --restart unless-stopped \
+  --network host \
+  --cap-add NET_ADMIN \
+  --env-file /etc/vpn-portal.env \
+  -v /etc/wireguard:/etc/wireguard \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /usr/local/bin/vpn-update:/usr/local/bin/vpn-update \
+  $REGISTRY/$IMAGE:latest
+echo "vpn-portal updated"
+UPDATEEOF
+chmod +x /usr/local/bin/vpn-update
+echo "    installed"
 
 echo "==> Installing systemd service (reference only)"
 cp /tmp/vpn-portal/vpn-portal.service /etc/systemd/system/
@@ -444,7 +474,7 @@ systemctl reload nginx
 echo "    done"
 REMOTE
 
-# ─── Fix placeholders in remote script output ─────────────────────────────────
+# ─── Fix placeholders ─────────────────────────────────────────────────────────
 ssh "$SSH_TARGET" bash << FIXEOF
 set -e
 for f in /etc/systemd/system/vpn-portal.service /etc/vpn-portal.env; do

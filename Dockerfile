@@ -11,7 +11,8 @@ RUN go mod download
 
 # Build
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o vpn-portal .
+ARG GIT_SHA=unknown
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s -X main.buildSHA=${GIT_SHA}" -o vpn-portal .
 
 # ── Runtime image ─────────────────────────────────────────────────────────────
 FROM alpine:3.19
@@ -19,7 +20,8 @@ FROM alpine:3.19
 RUN apk add --no-cache \
     wireguard-tools \
     ca-certificates \
-    tzdata
+    tzdata \
+    docker-cli
 
 WORKDIR /app
 

@@ -531,6 +531,7 @@ func handleAdmin(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, tmplAdmin, map[string]interface{}{
 		"Peers": peers,
 		"Token": token,
+		"Error": r.URL.Query().Get("error"),
 	})
 }
 
@@ -638,6 +639,169 @@ func handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	fmt.Fprint(w, buildConfig(peer))
+}
+
+func handleAdminAddPeer(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
+		return
+	}
+
+	email := strings.TrimSpace(r.FormValue("email"))
+	name := strings.TrimSpace(r.FormValue("name"))
+
+	if email == "" || name == "" {
+		http.Redirect(w, r, "/admin?token="+token+"&error=missing_fields", http.StatusFound)
+		return
+	}
+
+	stateMu.Lock()
+	defer stateMu.Unlock()
+
+	if findPeerByEmail(email) != nil {
+		http.Redirect(w, r, "/admin?token="+token+"&error=already_exists", http.StatusFound)
+		return
+	}
+
+	ip := nextIP()
+	if ip == "" {
+		http.Redirect(w, r, "/admin?token="+token+"&error=no_ips", http.StatusFound)
+		return
+	}
+
+	privKey, pubKey, err := generateKeyPair()
+	if err != nil {
+		http.Redirect(w, r, "/admin?token="+token+"&error=keygen_failed", http.StatusFound)
+		return
+	}
+
+	if err := addWGPeer(pubKey, ip); err != nil {
+		http.Redirect(w, r, "/admin?token="+token+"&error=wg_failed", http.StatusFound)
+		return
+	}
+
+	peer := Peer{
+		Email:      email,
+		Name:       name,
+		PublicKey:  pubKey,
+		PrivateKey: privKey,
+		AssignedIP: ip,
+		CreatedAt:  time.Now(),
+	}
+	state.Peers = append(state.Peers, peer)
+	saveState()
+	log.Printf("[admin] added peer %s (%s)", email, pubKey[:8])
+
+	http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
+}
+
+// ─── Version & Update ────────────────────────────────────────────────────────
+
+var buildSHA = getEnv("GIT_SHA", "unknown")
+
+var updateRunning bool
+var updateMu sync.Mutex
+
+func handleAdminVersion(w http.ResponseWriter, r *http.Request) {
+	if os.Getenv("DEV_MODE") == "true" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"current_sha":      "dev",
+			"update_available": false,
+		})
+		return
+	}
+
+	// Get running container digest
+	currentDigest := "unknown"
+	out, err := exec.Command("docker", "inspect",
+		"--format", "{{index .RepoDigests 0}}",
+		"vpn-portal",
+	).Output()
+	if err == nil {
+		d := strings.TrimSpace(string(out))
+		if idx := strings.Index(d, "sha256:"); idx != -1 {
+			end := idx + 7 + 12
+			if end > len(d) {
+				end = len(d)
+			}
+			currentDigest = d[idx+7 : end]
+		}
+	}
+
+	// Get latest digest from registry
+	latestDigest := "unknown"
+	registry := getEnv("REGISTRY", "registry.digitalocean.com/rzilient-do-containers")
+	out2, err := exec.Command("docker", "manifest", "inspect",
+		"--verbose",
+		registry+"/vpn-portal:latest",
+	).Output()
+	if err == nil {
+		str := string(out2)
+		if idx := strings.Index(str, `"digest": "sha256:`); idx != -1 {
+			start := idx + 18
+			end := start + 12
+			if end > len(str) {
+				end = len(str)
+			}
+			latestDigest = str[start:end]
+		}
+	}
+
+	updateAvailable := latestDigest != "unknown" &&
+		currentDigest != "unknown" &&
+		latestDigest != currentDigest
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"current_sha":      buildSHA,
+		"current_digest":   currentDigest,
+		"latest_digest":    latestDigest,
+		"update_available": updateAvailable,
+	})
+}
+
+func handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if os.Getenv("DEV_MODE") == "true" {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"update started","dev_mode":true}`)
+		return
+	}
+
+	updateMu.Lock()
+	if updateRunning {
+		updateMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		fmt.Fprint(w, `{"status":"update already in progress"}`)
+		return
+	}
+	updateRunning = true
+	updateMu.Unlock()
+
+	go func() {
+		defer func() {
+			updateMu.Lock()
+			updateRunning = false
+			updateMu.Unlock()
+		}()
+		out, err := exec.Command("/usr/local/bin/vpn-update").CombinedOutput()
+		if err != nil {
+			log.Printf("[update] failed: %s: %v", out, err)
+		} else {
+			log.Printf("[update] completed: %s", out)
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, `{"status":"update started"}`)
 }
 
 func handleAdminStats(w http.ResponseWriter, r *http.Request) {
@@ -761,10 +925,16 @@ func main() {
 	mux.HandleFunc("/auth/login", handleLoginStart)
 	mux.HandleFunc("/auth/callback", handleLoginCallback)
 	mux.HandleFunc("/auth/logout", handleLogout)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"status":"ok","service":"vpn-portal"}`)
+	})
 	mux.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/manifest+json")
 		http.ServeFile(w, r, "manifest.json")
 	})
+
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	mux.HandleFunc("/admin", adminAuth(handleAdmin))
 	mux.HandleFunc("/admin/block", adminAuth(handleAdminBlock))
@@ -772,6 +942,9 @@ func main() {
 	mux.HandleFunc("/admin/revoke", adminAuth(handleAdminRevoke))
 	mux.HandleFunc("/admin/stats", adminAuth(handleAdminStats))
 	mux.HandleFunc("/admin/config", adminAuth(handleAdminConfig))
+	mux.HandleFunc("/admin/add-peer", adminAuth(handleAdminAddPeer))
+	mux.HandleFunc("/admin/version", adminAuth(handleAdminVersion))
+	mux.HandleFunc("/admin/update", adminAuth(handleAdminUpdate))
 
 	addr := ":" + port
 	log.Printf("Starting VPN portal on %s", addr)
