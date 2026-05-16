@@ -36,6 +36,9 @@ var (
 	sessionSecret      = getEnv("SESSION_SECRET", "change-me-in-production")
 	port               = getEnv("PORT", "8080")
 	adminToken         = getEnv("ADMIN_TOKEN", "")
+	mailgunAPIKey      = getEnv("MAILGUN_API_KEY", "")
+	mailgunDomain      = getEnv("MAILGUN_DOMAIN", "")
+	mailgunFrom        = getEnv("MAILGUN_FROM", "")
 )
 
 var oauthConfig = &oauth2.Config{
@@ -234,12 +237,146 @@ func validOAuthState(s string) bool {
 	return time.Now().Before(exp)
 }
 
+// ─── Magic link store ─────────────────────────────────────────────────────────
+
+type magicLinkEntry struct {
+	email  string
+	expiry time.Time
+}
+
+var (
+	magicLinkMu    sync.Mutex
+	magicLinkStore = map[string]magicLinkEntry{}
+)
+
+func newMagicToken(email string) string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	token := base64.URLEncoding.EncodeToString(b)
+	magicLinkMu.Lock()
+	magicLinkStore[token] = magicLinkEntry{email: email, expiry: time.Now().Add(1 * time.Hour)}
+	magicLinkMu.Unlock()
+	return token
+}
+
+func consumeMagicToken(token string) (string, bool) {
+	magicLinkMu.Lock()
+	defer magicLinkMu.Unlock()
+	entry, ok := magicLinkStore[token]
+	if !ok || time.Now().After(entry.expiry) {
+		delete(magicLinkStore, token)
+		return "", false
+	}
+	delete(magicLinkStore, token)
+	return entry.email, true
+}
+
+// ─── Admin session ────────────────────────────────────────────────────────────
+
+var (
+	adminSessionMu    sync.Mutex
+	adminSessionStore = map[string]time.Time{}
+)
+
+func setAdminSession(w http.ResponseWriter) {
+	b := make([]byte, 32)
+	rand.Read(b)
+	val := base64.StdEncoding.EncodeToString(b)
+	http.SetCookie(w, &http.Cookie{
+		Name:     "vpn_admin_session",
+		Value:    val,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		MaxAge:   86400 * 1,
+		SameSite: http.SameSiteLaxMode,
+	})
+	adminSessionMu.Lock()
+	adminSessionStore[val] = time.Now().Add(24 * time.Hour)
+	adminSessionMu.Unlock()
+}
+
+func getAdminSession(r *http.Request) bool {
+	c, err := r.Cookie("vpn_admin_session")
+	if err != nil {
+		return false
+	}
+	adminSessionMu.Lock()
+	defer adminSessionMu.Unlock()
+	exp, ok := adminSessionStore[c.Value]
+	if !ok || time.Now().After(exp) {
+		delete(adminSessionStore, c.Value)
+		return false
+	}
+	return true
+}
+
+func clearAdminSession(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie("vpn_admin_session")
+	if err == nil {
+		adminSessionMu.Lock()
+		delete(adminSessionStore, c.Value)
+		adminSessionMu.Unlock()
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:   "vpn_admin_session",
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+	})
+}
+
+// ─── Mailgun ──────────────────────────────────────────────────────────────────
+
+func sendMagicLinkEmail(toEmail, magicURL string) error {
+	if mailgunAPIKey == "" || mailgunDomain == "" {
+		return fmt.Errorf("mailgun not configured")
+	}
+	body := strings.NewReader(fmt.Sprintf(
+		"from=%s&to=%s&subject=%s&text=%s&html=%s",
+		urlEncode(mailgunFrom),
+		urlEncode(toEmail),
+		urlEncode("Your VPN login link"),
+		urlEncode(fmt.Sprintf("Click this link to log in to the VPN portal (expires in 1 hour):\n\n%s\n\nIf you did not request this, ignore this email.", magicURL)),
+		urlEncode(fmt.Sprintf(`<p>Click the link below to log in to the VPN portal. This link expires in <strong>1 hour</strong>.</p><p><a href="%s">Log in to VPN portal</a></p><p>If you did not request this, ignore this email.</p>`, magicURL)),
+	))
+
+	req, err := http.NewRequest("POST",
+		fmt.Sprintf("https://api.mailgun.net/v3/%s/messages", mailgunDomain),
+		body,
+	)
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth("api", mailgunAPIKey)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("mailgun returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func urlEncode(s string) string {
+	return strings.NewReplacer(
+		" ", "+", "@", "%40", ":", "%3A", "/", "%2F",
+		"?", "%3F", "=", "%3D", "&", "%26", "\n", "%0A",
+		"<", "%3C", ">", "%3E", `"`, "%22",
+	).Replace(s)
+}
+
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
 func handleHome(w http.ResponseWriter, r *http.Request) {
 	email, name, ok := getSession(r)
 	if !ok {
-		http.Redirect(w, r, "/auth/login", http.StatusFound)
+		http.Redirect(w, r, "/auth/magic", http.StatusFound)
 		return
 	}
 
@@ -277,7 +414,7 @@ func handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	email, name, ok := getSession(r)
 	if !ok {
-		http.Redirect(w, r, "/auth/login", http.StatusFound)
+		http.Redirect(w, r, "/auth/magic", http.StatusFound)
 		return
 	}
 
@@ -323,7 +460,7 @@ func handleGenerate(w http.ResponseWriter, r *http.Request) {
 func handleDownload(w http.ResponseWriter, r *http.Request) {
 	email, _, ok := getSession(r)
 	if !ok {
-		http.Redirect(w, r, "/auth/login", http.StatusFound)
+		http.Redirect(w, r, "/auth/magic", http.StatusFound)
 		return
 	}
 
@@ -427,7 +564,68 @@ func handleLoginCallback(w http.ResponseWriter, r *http.Request) {
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {
 	clearSession(w)
-	http.Redirect(w, r, "https://rzilient.tech", http.StatusFound)
+	http.Redirect(w, r, "/auth/magic", http.StatusFound)
+}
+
+// ─── Magic link handlers ──────────────────────────────────────────────────────
+
+func handleMagicLinkRequest(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			renderTemplate(w, tmplMagicLink, map[string]interface{}{"Error": "invalid_request"})
+			return
+		}
+		email := strings.TrimSpace(strings.ToLower(r.FormValue("email")))
+		if email == "" {
+			renderTemplate(w, tmplMagicLink, map[string]interface{}{"Error": "missing_email"})
+			return
+		}
+		parts := strings.Split(email, "@")
+		if len(parts) != 2 || !isDomainAllowed(parts[1]) {
+			renderTemplate(w, tmplMagicLink, map[string]interface{}{"Error": "domain_not_allowed"})
+			return
+		}
+		token := newMagicToken(email)
+		magicURL := fmt.Sprintf("%s/auth/magic/verify?token=%s", baseURL, token)
+		if err := sendMagicLinkEmail(email, magicURL); err != nil {
+			log.Printf("[magic] failed to send email to %s: %v", email, err)
+			renderTemplate(w, tmplMagicLink, map[string]interface{}{"Error": "send_failed"})
+			return
+		}
+		log.Printf("[magic] sent link to %s", email)
+		renderTemplate(w, tmplMagicSent, map[string]interface{}{"Email": email})
+		return
+	}
+	errMsg := r.URL.Query().Get("error")
+	renderTemplate(w, tmplMagicLink, map[string]interface{}{"Error": errMsg})
+}
+
+func handleMagicLinkVerify(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Redirect(w, r, "/auth/magic?error=missing_token", http.StatusFound)
+		return
+	}
+	email, ok := consumeMagicToken(token)
+	if !ok {
+		http.Redirect(w, r, "/auth/magic?error=invalid_or_expired", http.StatusFound)
+		return
+	}
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 || !isDomainAllowed(parts[1]) {
+		http.Redirect(w, r, "/auth/magic?error=domain_not_allowed", http.StatusFound)
+		return
+	}
+	nameParts := strings.Split(parts[0], ".")
+	for i, p := range nameParts {
+		if len(p) > 0 {
+			nameParts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	name := strings.Join(nameParts, " ")
+	setSession(w, email, name)
+	log.Printf("[magic] verified login for %s", email)
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 // ─── WireGuard Stats ─────────────────────────────────────────────────────────
@@ -442,7 +640,6 @@ type WGStats struct {
 
 func getWGStats() (map[string]WGStats, error) {
 	if os.Getenv("DEV_MODE") == "true" {
-		// Return fake stats in dev mode
 		return map[string]WGStats{
 			"dev-public-key": {
 				PublicKey:     "dev-public-key",
@@ -464,7 +661,7 @@ func getWGStats() (map[string]WGStats, error) {
 
 	for i, line := range lines {
 		if i == 0 {
-			continue // skip interface line
+			continue
 		}
 		fields := strings.Fields(line)
 		if len(fields) < 8 {
@@ -512,9 +709,8 @@ func formatBytes(b int64) string {
 
 func adminAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.URL.Query().Get("token")
-		if adminToken == "" || token != adminToken {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		if !getAdminSession(r) {
+			http.Redirect(w, r, "/admin/login", http.StatusFound)
 			return
 		}
 		next(w, r)
@@ -527,22 +723,46 @@ func handleAdmin(w http.ResponseWriter, r *http.Request) {
 	copy(peers, state.Peers)
 	stateMu.Unlock()
 
-	token := r.URL.Query().Get("token")
 	renderTemplate(w, tmplAdmin, map[string]interface{}{
 		"Peers": peers,
-		"Token": token,
 		"Error": r.URL.Query().Get("error"),
 	})
 }
 
+func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
+	if getAdminSession(r) {
+		http.Redirect(w, r, "/admin", http.StatusFound)
+		return
+	}
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			renderTemplate(w, tmplAdminLogin, map[string]interface{}{"Error": "invalid_request"})
+			return
+		}
+		token := r.FormValue("token")
+		if adminToken == "" || token != adminToken {
+			renderTemplate(w, tmplAdminLogin, map[string]interface{}{"Error": "invalid_token"})
+			return
+		}
+		setAdminSession(w)
+		http.Redirect(w, r, "/admin", http.StatusFound)
+		return
+	}
+	renderTemplate(w, tmplAdminLogin, nil)
+}
+
+func handleAdminLogout(w http.ResponseWriter, r *http.Request) {
+	clearAdminSession(w, r)
+	http.Redirect(w, r, "/admin/login", http.StatusFound)
+}
+
 func handleAdminBlock(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Redirect(w, r, "/admin?token="+r.URL.Query().Get("token"), http.StatusFound)
+		http.Redirect(w, r, "/admin", http.StatusFound)
 		return
 	}
 
 	pubKey := r.FormValue("public_key")
-	token := r.URL.Query().Get("token")
 
 	stateMu.Lock()
 	defer stateMu.Unlock()
@@ -557,17 +777,16 @@ func handleAdminBlock(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	saveState()
-	http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
+	http.Redirect(w, r, "/admin", http.StatusFound)
 }
 
 func handleAdminUnblock(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Redirect(w, r, "/admin?token="+r.URL.Query().Get("token"), http.StatusFound)
+		http.Redirect(w, r, "/admin", http.StatusFound)
 		return
 	}
 
 	pubKey := r.FormValue("public_key")
-	token := r.URL.Query().Get("token")
 
 	stateMu.Lock()
 	defer stateMu.Unlock()
@@ -585,17 +804,16 @@ func handleAdminUnblock(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	saveState()
-	http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
+	http.Redirect(w, r, "/admin", http.StatusFound)
 }
 
 func handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Redirect(w, r, "/admin?token="+r.URL.Query().Get("token"), http.StatusFound)
+		http.Redirect(w, r, "/admin", http.StatusFound)
 		return
 	}
 
 	pubKey := r.FormValue("public_key")
-	token := r.URL.Query().Get("token")
 
 	stateMu.Lock()
 	defer stateMu.Unlock()
@@ -612,7 +830,7 @@ func handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	saveState()
-	http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
+	http.Redirect(w, r, "/admin", http.StatusFound)
 }
 
 func handleAdminConfig(w http.ResponseWriter, r *http.Request) {
@@ -642,10 +860,8 @@ func handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAdminAddPeer(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-
 	if r.Method != http.MethodPost {
-		http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
+		http.Redirect(w, r, "/admin", http.StatusFound)
 		return
 	}
 
@@ -653,7 +869,7 @@ func handleAdminAddPeer(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.FormValue("name"))
 
 	if email == "" || name == "" {
-		http.Redirect(w, r, "/admin?token="+token+"&error=missing_fields", http.StatusFound)
+		http.Redirect(w, r, "/admin?error=missing_fields", http.StatusFound)
 		return
 	}
 
@@ -661,24 +877,24 @@ func handleAdminAddPeer(w http.ResponseWriter, r *http.Request) {
 	defer stateMu.Unlock()
 
 	if findPeerByEmail(email) != nil {
-		http.Redirect(w, r, "/admin?token="+token+"&error=already_exists", http.StatusFound)
+		http.Redirect(w, r, "/admin?error=already_exists", http.StatusFound)
 		return
 	}
 
 	ip := nextIP()
 	if ip == "" {
-		http.Redirect(w, r, "/admin?token="+token+"&error=no_ips", http.StatusFound)
+		http.Redirect(w, r, "/admin?error=no_ips", http.StatusFound)
 		return
 	}
 
 	privKey, pubKey, err := generateKeyPair()
 	if err != nil {
-		http.Redirect(w, r, "/admin?token="+token+"&error=keygen_failed", http.StatusFound)
+		http.Redirect(w, r, "/admin?error=keygen_failed", http.StatusFound)
 		return
 	}
 
 	if err := addWGPeer(pubKey, ip); err != nil {
-		http.Redirect(w, r, "/admin?token="+token+"&error=wg_failed", http.StatusFound)
+		http.Redirect(w, r, "/admin?error=wg_failed", http.StatusFound)
 		return
 	}
 
@@ -694,7 +910,7 @@ func handleAdminAddPeer(w http.ResponseWriter, r *http.Request) {
 	saveState()
 	log.Printf("[admin] added peer %s (%s)", email, pubKey[:8])
 
-	http.Redirect(w, r, "/admin?token="+token, http.StatusFound)
+	http.Redirect(w, r, "/admin", http.StatusFound)
 }
 
 // ─── Version & Update ────────────────────────────────────────────────────────
@@ -714,7 +930,6 @@ func handleAdminVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get running container digest
 	currentDigest := "unknown"
 	out, err := exec.Command("docker", "inspect",
 		"--format", "{{index .RepoDigests 0}}",
@@ -731,7 +946,6 @@ func handleAdminVersion(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get latest digest from registry
 	latestDigest := "unknown"
 	registry := getEnv("REGISTRY", "registry.digitalocean.com/rzilient-do-containers")
 	out2, err := exec.Command("docker", "manifest", "inspect",
@@ -811,7 +1025,6 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Enrich with formatted values
 	type StatResponse struct {
 		PublicKey     string `json:"public_key"`
 		Endpoint      string `json:"endpoint"`
@@ -827,7 +1040,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Unix()
 
 	for k, s := range stats {
-		online := s.LastHandshake > 0 && (now-s.LastHandshake) < 180 // online if handshake < 3 min ago
+		online := s.LastHandshake > 0 && (now-s.LastHandshake) < 180
 		result[k] = StatResponse{
 			PublicKey:     s.PublicKey,
 			Endpoint:      s.Endpoint,
@@ -849,6 +1062,9 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 var tmplHome *template.Template
 var tmplUnauthorized *template.Template
 var tmplAdmin *template.Template
+var tmplAdminLogin *template.Template
+var tmplMagicLink *template.Template
+var tmplMagicSent *template.Template
 
 func init() {
 	godotenv.Load()
@@ -864,6 +1080,9 @@ func init() {
 	sessionSecret = getEnv("SESSION_SECRET", "change-me-in-production")
 	port = getEnv("PORT", "8080")
 	adminToken = getEnv("ADMIN_TOKEN", "")
+	mailgunAPIKey = getEnv("MAILGUN_API_KEY", "")
+	mailgunDomain = getEnv("MAILGUN_DOMAIN", "")
+	mailgunFrom = getEnv("MAILGUN_FROM", "")
 
 	funcMap := template.FuncMap{
 		"add": func(a, b int) int { return a + b },
@@ -881,6 +1100,9 @@ func init() {
 	tmplHome = template.Must(template.ParseFiles("templates/home.html"))
 	tmplUnauthorized = template.Must(template.ParseFiles("templates/unauthorized.html"))
 	tmplAdmin = template.Must(template.New("admin.html").Funcs(funcMap).ParseFiles("templates/admin.html"))
+	tmplAdminLogin = template.Must(template.ParseFiles("templates/admin-login.html"))
+	tmplMagicLink = template.Must(template.ParseFiles("templates/magic-link.html"))
+	tmplMagicSent = template.Must(template.ParseFiles("templates/magic-sent.html"))
 
 	oauthConfig.ClientID = googleClientID
 	oauthConfig.ClientSecret = googleClientSecret
@@ -925,10 +1147,12 @@ func main() {
 	mux.HandleFunc("/auth/login", handleLoginStart)
 	mux.HandleFunc("/auth/callback", handleLoginCallback)
 	mux.HandleFunc("/auth/logout", handleLogout)
+	mux.HandleFunc("/auth/magic", handleMagicLinkRequest)
+	mux.HandleFunc("/auth/magic/verify", handleMagicLinkVerify)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{"status":"ok","service":"vpn-portal"}`)
+		fmt.Fprintf(w, `{"status":"ok","service":"vpn-portal","sha":"%s"}`, buildSHA)
 	})
 	mux.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/manifest+json")
@@ -936,6 +1160,8 @@ func main() {
 	})
 
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	mux.HandleFunc("/admin/login", handleAdminLogin)
+	mux.HandleFunc("/admin/logout", handleAdminLogout)
 	mux.HandleFunc("/admin", adminAuth(handleAdmin))
 	mux.HandleFunc("/admin/block", adminAuth(handleAdminBlock))
 	mux.HandleFunc("/admin/unblock", adminAuth(handleAdminUnblock))

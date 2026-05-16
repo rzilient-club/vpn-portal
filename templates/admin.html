@@ -44,6 +44,7 @@
         </a>
         <span class="admin-badge">// admin</span>
         <span id="versionBadge" class="version-badge">checking...</span>
+        <a href="/admin/logout" style="font-family:var(--mono);font-size:11px;color:var(--text-muted);text-decoration:none;padding:4px 10px;border:1px solid var(--border);border-radius:4px;transition:all 0.15s;" onmouseover="this.style.color='#B4EA1F';this.style.borderColor='rgba(180,234,31,0.3)'" onmouseout="this.style.color='';this.style.borderColor=''">logout</a>
     </nav>
 
     <div class="header">
@@ -105,7 +106,7 @@
     <!-- Add peer -->
     <div class="add-peer-card">
         <h3>// add peer</h3>
-        <form class="add-peer-form" method="POST" action="/admin/add-peer?token={{ .Token }}">
+        <form class="add-peer-form" method="POST" action="/admin/add-peer">
             <div class="add-peer-field">
                 <label>Email</label>
                 <input class="add-peer-input" type="email" name="email" placeholder="user@company.com" required>
@@ -192,12 +193,12 @@
             <td>
                 <div class="actions">
                     {{ if .Blocked }}
-                    <form method="POST" action="/admin/unblock?token={{ $.Token }}">
+                    <form method="POST" action="/admin/unblock">
                         <input type="hidden" name="public_key" value="{{ .PublicKey }}">
                         <button type="submit" class="btn btn-unblock">↑ unblock</button>
                     </form>
                     {{ else }}
-                    <form method="POST" action="/admin/block?token={{ $.Token }}">
+                    <form method="POST" action="/admin/block">
                         <input type="hidden" name="public_key" value="{{ .PublicKey }}">
                         <button type="submit" class="btn btn-block">⊘ block</button>
                     </form>
@@ -209,7 +210,7 @@
                     >⎘ config</button>
                     <button
                             class="btn btn-revoke"
-                            onclick="confirmRevoke('{{ .PublicKey }}', '{{ .Email }}', '/admin/revoke?token={{ $.Token }}')"
+                            onclick="confirmRevoke('{{ .PublicKey }}', '{{ .Email }}', '/admin/revoke')"
                     >✕ revoke</button>
                 </div>
             </td>
