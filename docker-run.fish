@@ -40,6 +40,7 @@ end
 function do_build
   log_step "Building Docker image"
   docker build \
+    --build-arg GIT_SHA=$TAG \
     --label "git.sha=$TAG" \
     -t $REGISTRY/$IMAGE:latest \
     -t $REGISTRY/$IMAGE:$TAG \
@@ -69,11 +70,20 @@ end
 function do_run
   check_env
 
-  # Stop existing container if running
-  if docker ps -q --filter name=vpn-portal-dev | grep -q .
+  log_step "Fetching DO API token from 1Password"
+  set DO_API_TOKEN (op read "op://Engineering/API_Production/DO_API_TOKEN")
+  doctl auth init --access-token $DO_API_TOKEN
+  doctl registry login
+  log_ok "Authenticated"
+
+  log_step "Pulling latest image"
+  docker pull $REGISTRY/$IMAGE:latest
+  log_ok "Image pulled"
+
+  if docker ps -aq --filter name=vpn-portal-dev | grep -q .
     log_step "Stopping existing container"
-    docker stop vpn-portal-dev
-    docker rm vpn-portal-dev
+    docker stop vpn-portal-dev 2>/dev/null
+    docker rm vpn-portal-dev 2>/dev/null
   end
 
   log_step "Starting vpn-portal locally"
@@ -118,7 +128,7 @@ switch $MODE
     echo "  Modes:"
     echo "    build   Build image only"
     echo "    push    Build and push to registry"
-    echo "    run     Run locally (uses existing image)"
+    echo "    run     Pull latest and run locally"
     echo "    all     Build, push and run locally (default)"
     echo ""
     exit 1

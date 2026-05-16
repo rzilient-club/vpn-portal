@@ -168,6 +168,65 @@ async function fetchStats() {
   }
 }
 
+// ── Version check ─────────────────────────────────────────────────────────────
+async function checkVersion() {
+  const badge = document.getElementById('versionBadge');
+  if (!badge) return;
+
+  try {
+    const res = await fetch('/admin/version?token=' + TOKEN);
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+
+    if (data.update_available) {
+      badge.className = 'version-badge update-available';
+      badge.innerHTML =
+          '↑ update available &nbsp;' +
+          '<button class="btn-update" id="btnUpdate" onclick="triggerUpdate()">update now</button>';
+    } else if (data.current_sha && data.current_sha !== 'unknown') {
+      badge.className = 'version-badge up-to-date';
+      badge.textContent = '✓ ' + data.current_sha.substring(0, 7);
+    } else {
+      badge.className = 'version-badge up-to-date';
+      badge.textContent = '✓ up to date';
+    }
+  } catch(e) {
+    badge.className = 'version-badge';
+    badge.textContent = '? version unknown';
+  }
+}
+
+async function triggerUpdate() {
+  const btn   = document.getElementById('btnUpdate');
+  const badge = document.getElementById('versionBadge');
+  if (!btn) return;
+
+  if (!confirm('Update vpn-portal to the latest image? The portal will restart in ~30 seconds.')) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="update-spinner"></span>';
+  badge.className = 'version-badge';
+
+  try {
+    const res = await fetch('/admin/update?token=' + TOKEN, { method: 'POST' });
+
+    if (res.status === 409) {
+      showToast('Update already in progress', 'error');
+      btn.disabled = false;
+      btn.innerHTML = 'update now';
+      return;
+    }
+
+    badge.textContent = '⟳ restarting...';
+    showToast('Update started — portal will restart in ~30 seconds');
+    setTimeout(checkVersion, 60000);
+  } catch(e) {
+    showToast('Update failed', 'error');
+    btn.disabled = false;
+    btn.innerHTML = 'update now';
+  }
+}
+
 // ── Peer counters ────────────────────────────────────────────────────────────
 function updateCounters() {
   const rows = document.querySelectorAll('tr[data-pubkey]');
@@ -322,7 +381,10 @@ fetchStats = async function() {
 };
 
 // Initial fetch + poll every 30s + tick every second
+// Initial fetch + poll every 30s + tick every second
 updateCounters();
 fetchStats();
+checkVersion();
 setInterval(fetchStats, 30000);
 setInterval(tickLastSeen, 1000);
+setInterval(checkVersion, 300000);
