@@ -183,12 +183,19 @@ if [[ "$COMMAND" == "init" ]]; then
   GOOGLE_CLIENT_SECRET=$(grep "^Environment=GOOGLE_CLIENT_SECRET=" "$LOCAL_DIR/vpn-portal.service" | cut -d= -f3-)
   ALLOWED_DOMAINS=$(grep "^Environment=ALLOWED_DOMAINS=" "$LOCAL_DIR/vpn-portal.service" | cut -d= -f3-)
   ADMIN_TOKEN=$(grep "^Environment=ADMIN_TOKEN=" "$LOCAL_DIR/vpn-portal.service" | cut -d= -f3-)
+  SMTP_HOST=$(grep "^Environment=SMTP_HOST=" "$LOCAL_DIR/vpn-portal.service" | cut -d= -f3-)
+  SMTP_PORT=$(grep "^Environment=SMTP_PORT=" "$LOCAL_DIR/vpn-portal.service" | cut -d= -f3-)
+  SMTP_USERNAME=$(grep "^Environment=SMTP_USERNAME=" "$LOCAL_DIR/vpn-portal.service" | cut -d= -f3-)
+  SMTP_PASSWORD=$(grep "^Environment=SMTP_PASSWORD=" "$LOCAL_DIR/vpn-portal.service" | cut -d= -f3-)
+  SMTP_FROM=$(grep "^Environment=SMTP_FROM=" "$LOCAL_DIR/vpn-portal.service" | cut -d= -f3-)
 
   ERRORS=0
   if [[ "$GOOGLE_CLIENT_ID" == *"<"* || -z "$GOOGLE_CLIENT_ID" ]];         then log_err "GOOGLE_CLIENT_ID not set in vpn-portal.service";     ERRORS=1; fi
   if [[ "$GOOGLE_CLIENT_SECRET" == *"<"* || -z "$GOOGLE_CLIENT_SECRET" ]]; then log_err "GOOGLE_CLIENT_SECRET not set in vpn-portal.service"; ERRORS=1; fi
   if [[ "$ALLOWED_DOMAINS" == *"<"* || -z "$ALLOWED_DOMAINS" ]];           then log_err "ALLOWED_DOMAINS not set in vpn-portal.service";       ERRORS=1; fi
   if [[ "$ADMIN_TOKEN" == *"<"* || -z "$ADMIN_TOKEN" ]];                   then log_err "ADMIN_TOKEN not set in vpn-portal.service";           ERRORS=1; fi
+  if [[ -z "$SMTP_USERNAME" ]]; then log_err "SMTP_USERNAME not set in vpn-portal.service"; ERRORS=1; fi
+  if [[ -z "$SMTP_PASSWORD" ]]; then log_err "SMTP_PASSWORD not set in vpn-portal.service"; ERRORS=1; fi
   [ $ERRORS -ne 0 ] && echo "" && echo "  Edit vpn-portal.service locally and set the required values first." && echo "" && exit 1
 
   log_step "Injecting secrets on $HOST"
@@ -200,12 +207,24 @@ sed -i "s|Environment=GOOGLE_CLIENT_SECRET=.*|Environment=GOOGLE_CLIENT_SECRET=$
 sed -i "s|Environment=ALLOWED_DOMAINS=.*|Environment=ALLOWED_DOMAINS=${ALLOWED_DOMAINS}|"                 /etc/systemd/system/vpn-portal.service
 sed -i "s|Environment=ADMIN_TOKEN=.*|Environment=ADMIN_TOKEN=${ADMIN_TOKEN}|"                             /etc/systemd/system/vpn-portal.service
 
-# Update Docker env file if it exists
+# Update Docker env file
 if [ -f /etc/vpn-portal.env ]; then
   sed -i "s|GOOGLE_CLIENT_ID=.*|GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}|"             /etc/vpn-portal.env
   sed -i "s|GOOGLE_CLIENT_SECRET=.*|GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}|" /etc/vpn-portal.env
   sed -i "s|ALLOWED_DOMAINS=.*|ALLOWED_DOMAINS=${ALLOWED_DOMAINS}|"                 /etc/vpn-portal.env
   sed -i "s|ADMIN_TOKEN=.*|ADMIN_TOKEN=${ADMIN_TOKEN}|"                             /etc/vpn-portal.env
+
+  # SMTP — update if exists, append if missing
+  for key in SMTP_HOST SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_FROM; do
+    val="${!key}"
+    if [ -n "$val" ]; then
+      if grep -q "^${key}=" /etc/vpn-portal.env; then
+        sed -i "s|${key}=.*|${key}=${val}|" /etc/vpn-portal.env
+      else
+        echo "${key}=${val}" >> /etc/vpn-portal.env
+      fi
+    fi
+  done
 fi
 
 # Recreate docker container to pick up new env file
@@ -403,6 +422,11 @@ GOOGLE_CLIENT_ID=<your_google_client_id>
 GOOGLE_CLIENT_SECRET=<your_google_client_secret>
 ALLOWED_DOMAINS=<your_allowed_domains>
 ADMIN_TOKEN=<your_secure_admin_token>
+SMTP_HOST=smtp.eu.mailgun.org
+SMTP_PORT=587
+SMTP_USERNAME=<your_smtp_username>
+SMTP_PASSWORD=<your_smtp_password>
+SMTP_FROM=<your_smtp_from>
 EOF
 chmod 600 /etc/vpn-portal.env
 
