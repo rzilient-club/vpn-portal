@@ -4,6 +4,14 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'main.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+      - 'templates/**'
+      - 'static/**'
+      - 'manifest.json'
   workflow_dispatch:
 
 env:
