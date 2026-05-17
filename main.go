@@ -908,6 +908,31 @@ var buildSHA = getEnv("GIT_SHA", "unknown")
 var updateRunning bool
 var updateMu sync.Mutex
 
+func getLatestImageSHA() string {
+	registry := getEnv("REGISTRY", "registry.digitalocean.com/rzilient-do-containers")
+
+	out, err := exec.Command("docker", "manifest", "inspect",
+		"--verbose",
+		registry+"/vpn-portal:latest",
+	).Output()
+	if err != nil {
+		return "unknown"
+	}
+
+	// Extract digest from output
+	// "digest": "sha256:36f9ffcd3b0550..."
+	str := string(out)
+	if idx := strings.Index(str, `"digest": "sha256:`); idx != -1 {
+		start := idx + 18
+		end := start + 7
+		if end > len(str) {
+			end = len(str)
+		}
+		return str[start:end]
+	}
+	return "unknown"
+}
+
 func handleAdminVersion(w http.ResponseWriter, r *http.Request) {
 	if os.Getenv("DEV_MODE") == "true" {
 		w.Header().Set("Content-Type", "application/json")
@@ -918,6 +943,7 @@ func handleAdminVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get running container digest
 	currentDigest := "unknown"
 	out, err := exec.Command("docker", "inspect",
 		"--format", "{{index .RepoDigests 0}}",
@@ -925,36 +951,22 @@ func handleAdminVersion(w http.ResponseWriter, r *http.Request) {
 	).Output()
 	if err == nil {
 		d := strings.TrimSpace(string(out))
+		// e.g. registry.../vpn-portal@sha256:36f9ff...
 		if idx := strings.Index(d, "sha256:"); idx != -1 {
-			end := idx + 7 + 12
-			if end > len(d) {
-				end = len(d)
+			hash := d[idx+7:]
+			if len(hash) > 7 {
+				hash = hash[:7]
 			}
-			currentDigest = d[idx+7 : end]
+			currentDigest = hash
 		}
 	}
 
-	latestDigest := "unknown"
-	registry := getEnv("REGISTRY", "registry.digitalocean.com/rzilient-do-containers")
-	out2, err := exec.Command("docker", "manifest", "inspect",
-		"--verbose",
-		registry+"/vpn-portal:latest",
-	).Output()
-	if err == nil {
-		str := string(out2)
-		if idx := strings.Index(str, `"digest": "sha256:`); idx != -1 {
-			start := idx + 18
-			end := start + 12
-			if end > len(str) {
-				end = len(str)
-			}
-			latestDigest = str[start:end]
-		}
-	}
+	// Get latest registry digest via manifest inspect
+	latestDigest := getLatestImageSHA()
 
-	updateAvailable := latestDigest != "unknown" &&
-		currentDigest != "unknown" &&
-		latestDigest != currentDigest
+	updateAvailable := currentDigest != "unknown" &&
+		latestDigest != "unknown" &&
+		currentDigest != latestDigest
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
