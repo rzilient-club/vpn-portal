@@ -56,7 +56,7 @@ function do_push
 
   log_step "Authenticating with DO Container Registry"
   doctl auth init --access-token $DO_API_TOKEN
-  doctl registry login
+  doctl registry login --never-expire
   log_ok "Authenticated"
 
   log_step "Pushing to registry"
@@ -73,7 +73,7 @@ function do_run
   log_step "Fetching DO API token from 1Password"
   set DO_API_TOKEN (op read "op://Engineering/API_Production/DO_API_TOKEN")
   doctl auth init --access-token $DO_API_TOKEN
-  doctl registry login
+  doctl registry login --never-expire
   log_ok "Authenticated"
 
   log_step "Pulling latest image"
