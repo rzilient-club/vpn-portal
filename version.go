@@ -81,7 +81,7 @@ func handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 		"-v", "/root/.config/doctl:/root/.config/doctl:ro",
 		"-v", "/etc/wireguard:/etc/wireguard",
 		"-v", "/var/log:/var/log",
-		"alpine",
+		"docker:cli",
 		"sh", "/vpn-update",
 	)
 	cmd.Env = append(os.Environ(), "PATH=/usr/local/bin:/usr/bin:/bin:/sbin")
