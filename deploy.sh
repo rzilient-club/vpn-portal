@@ -450,6 +450,7 @@ echo "==> Installing vpn-update script"
 cat > /usr/local/bin/vpn-update << 'UPDATEEOF'
 #!/bin/bash
 set -e
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 REGISTRY="registry.digitalocean.com/rzilient-do-containers"
 IMAGE="vpn-portal"
 doctl registry login
