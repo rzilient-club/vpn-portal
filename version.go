@@ -8,37 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"sync"
 )
 
 // ─── Version & Update ────────────────────────────────────────────────────────
 
 // buildSHA is set at build time via -ldflags "-X main.buildSHA=..."
 var buildSHA = "unknown"
-
-var (
-	updateRunning bool
-	updateMu      sync.Mutex
-)
-
-func getLatestImageSHA() string {
-	registry := getEnv("REGISTRY", "registry.digitalocean.com/rzilient-do-containers")
-	out, err := exec.Command("docker", "manifest", "inspect", "--verbose",
-		registry+"/vpn-portal:latest").Output()
-	if err != nil {
-		return "unknown"
-	}
-	str := string(out)
-	if idx := strings.Index(str, `"digest": "sha256:`); idx != -1 {
-		start := idx + 18
-		end := start + 7
-		if end > len(str) {
-			end = len(str)
-		}
-		return str[start:end]
-	}
-	return "unknown"
-}
 
 func handleAdminVersion(w http.ResponseWriter, r *http.Request) {
 	if os.Getenv("DEV_MODE") == "true" {
@@ -93,16 +68,6 @@ func handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"status":"update started","dev_mode":true}`)
 		return
 	}
-	updateMu.Lock()
-	if updateRunning {
-		updateMu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		fmt.Fprint(w, `{"status":"update already in progress"}`)
-		return
-	}
-	updateRunning = true
-	updateMu.Unlock()
 
 	// Run vpn-update in a sibling container via Docker socket
 	// Independent of vpn-portal container lifecycle
@@ -122,9 +87,6 @@ func handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 	cmd.Env = append(os.Environ(), "PATH=/usr/local/bin:/usr/bin:/bin:/sbin")
 	if err := cmd.Start(); err != nil {
 		log.Printf("[update] failed to start: %v", err)
-		updateMu.Lock()
-		updateRunning = false
-		updateMu.Unlock()
 	} else {
 		log.Printf("[update] sibling container launched pid %d", cmd.Process.Pid)
 		cmd.Process.Release()
