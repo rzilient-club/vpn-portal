@@ -104,10 +104,21 @@ func handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 	updateRunning = true
 	updateMu.Unlock()
 
-	// Run completely detached from this process so it survives container death
-	cmd := exec.Command("nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p",
-		"--", "/bin/bash", "-c",
-		"nohup /usr/local/bin/vpn-update >> /var/log/vpn-update.log 2>&1 &")
+	// Run vpn-update in a sibling container via Docker socket
+	// Independent of vpn-portal container lifecycle
+	cmd := exec.Command("docker", "run", "--rm",
+		"--name", "vpn-updater",
+		"-v", "/usr/local/bin/vpn-update:/vpn-update:ro",
+		"-v", "/var/run/docker.sock:/var/run/docker.sock",
+		"-v", "/etc/vpn-portal.env:/etc/vpn-portal.env:ro",
+		"-v", "/usr/local/bin/doctl:/usr/local/bin/doctl:ro",
+		"-v", "/root/.docker:/root/.docker",
+		"-v", "/root/.config/doctl:/root/.config/doctl:ro",
+		"-v", "/etc/wireguard:/etc/wireguard",
+		"-v", "/var/log:/var/log",
+		"alpine",
+		"sh", "/vpn-update",
+	)
 	cmd.Env = append(os.Environ(), "PATH=/usr/local/bin:/usr/bin:/bin:/sbin")
 	if err := cmd.Start(); err != nil {
 		log.Printf("[update] failed to start: %v", err)
@@ -115,7 +126,7 @@ func handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 		updateRunning = false
 		updateMu.Unlock()
 	} else {
-		log.Printf("[update] script launched via nsenter pid %d", cmd.Process.Pid)
+		log.Printf("[update] sibling container launched pid %d", cmd.Process.Pid)
 		cmd.Process.Release()
 	}
 
