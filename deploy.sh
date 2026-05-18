@@ -241,7 +241,7 @@ if docker ps -aq --filter name=vpn-portal | grep -q .; then
     -v /etc/wireguard:/etc/wireguard \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /usr/local/bin/vpn-update:/usr/local/bin/vpn-update \
-    -v /root/.docker:/root/.docker:ro \
+    -v /root/.docker:/root/.docker \
     -v /root/.config/doctl:/root/.config/doctl:ro \
     -v /usr/local/bin/doctl:/usr/local/bin/doctl:ro \
     ${REGISTRY}/${IMAGE}:latest
@@ -467,7 +467,7 @@ docker run -d \
   -v /etc/wireguard:/etc/wireguard \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /usr/local/bin/vpn-update:/usr/local/bin/vpn-update \
-  -v /root/.docker:/root/.docker:ro \
+  -v /root/.docker:/root/.docker \
   -v /root/.config/doctl:/root/.config/doctl:ro \
   -v /usr/local/bin/doctl:/usr/local/bin/doctl:ro \
   $REGISTRY/$IMAGE:latest
