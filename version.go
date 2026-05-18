@@ -50,30 +50,35 @@ func handleAdminVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentDigest := "unknown"
+	registry := getEnv("REGISTRY", "registry.digitalocean.com/rzilient-do-containers")
+	image := registry + "/vpn-portal:latest"
+
+	// Pull latest to update local cache
+	exec.Command("docker", "pull", image).Run()
+
+	// Get image ID of running container
+	currentID := "unknown"
 	out, err := exec.Command("docker", "inspect",
-		"--format", "{{index .RepoDigests 0}}", "vpn-portal").Output()
+		"--format", "{{.Image}}", "vpn-portal").Output()
 	if err == nil {
-		d := strings.TrimSpace(string(out))
-		if idx := strings.Index(d, "sha256:"); idx != -1 {
-			hash := d[idx+7:]
-			if len(hash) > 7 {
-				hash = hash[:7]
-			}
-			currentDigest = hash
-		}
+		currentID = strings.TrimSpace(string(out))
 	}
 
-	latestDigest := getLatestImageSHA()
-	updateAvailable := currentDigest != "unknown" &&
-		latestDigest != "unknown" &&
-		currentDigest != latestDigest
+	// Get image ID of local :latest tag
+	latestID := "unknown"
+	out2, err := exec.Command("docker", "inspect",
+		"--format", "{{.Id}}", image).Output()
+	if err == nil {
+		latestID = strings.TrimSpace(string(out2))
+	}
+
+	updateAvailable := currentID != "unknown" &&
+		latestID != "unknown" &&
+		currentID != latestID
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"current_sha":      buildSHA,
-		"current_digest":   currentDigest,
-		"latest_digest":    latestDigest,
 		"update_available": updateAvailable,
 	})
 }
