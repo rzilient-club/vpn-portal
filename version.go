@@ -110,16 +110,17 @@ func handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 			updateRunning = false
 			updateMu.Unlock()
 		}()
+		log.Printf("[update] starting /usr/local/bin/vpn-update")
 		cmd := exec.Command("/usr/local/bin/vpn-update")
 		cmd.Env = append(os.Environ(), "PATH=/usr/local/bin:/usr/bin:/bin:/sbin")
+		log.Printf("[update] env PATH: %s", cmd.Env[len(cmd.Env)-1])
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Printf("[update] failed: %s: %v", out, err)
+			log.Printf("[update] failed: %s: %v", string(out), err)
 		} else {
-			log.Printf("[update] completed: %s", out)
+			log.Printf("[update] completed: %s", string(out))
 		}
 	}()
-
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(w, `{"status":"update started"}`)
 }
