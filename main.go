@@ -1154,7 +1154,7 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"status":"ok","service":"vpn-portal","sha":"%s"}`, buildSHA)
+		fmt.Fprintf(w, `{"status":"ok","service":"%s","sha":"%s"}`, baseURL, buildSHA)
 	})
 	mux.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/manifest+json")
