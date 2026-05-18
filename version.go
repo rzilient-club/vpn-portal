@@ -105,20 +105,18 @@ func handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 	updateMu.Unlock()
 
 	// Run completely detached from this process so it survives container death
-	cmd := exec.Command("setsid", "/usr/local/bin/vpn-update")
+	cmd := exec.Command("nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p",
+		"--", "/bin/bash", "-c",
+		"nohup /usr/local/bin/vpn-update >> /var/log/vpn-update.log 2>&1 &")
 	cmd.Env = append(os.Environ(), "PATH=/usr/local/bin:/usr/bin:/bin:/sbin")
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	cmd.Stdin = nil
-	err := cmd.Start() // Start only, don't wait
-	if err != nil {
+	if err := cmd.Start(); err != nil {
 		log.Printf("[update] failed to start: %v", err)
 		updateMu.Lock()
 		updateRunning = false
 		updateMu.Unlock()
 	} else {
-		log.Printf("[update] script detached with pid %d", cmd.Process.Pid)
-		cmd.Process.Release() // Detach from Go process
+		log.Printf("[update] script launched via nsenter pid %d", cmd.Process.Pid)
+		cmd.Process.Release()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
