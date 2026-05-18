@@ -34,7 +34,6 @@ func init() {
 	serverPublicKey = getEnv("WG_SERVER_PUBLIC_KEY", "")
 	serverEndpoint = getEnv("WG_SERVER_ENDPOINT", "")
 	vpnSubnet = getEnv("VPN_SUBNET", "10.8.0")
-	sessionSecret = getEnv("SESSION_SECRET", "change-me-in-production")
 	port = getEnv("PORT", "8080")
 	adminToken = getEnv("ADMIN_TOKEN", "")
 	smtpHost = getEnv("SMTP_HOST", "smtp.eu.mailgun.org")
