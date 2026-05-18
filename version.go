@@ -104,21 +104,20 @@ func handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 	updateRunning = true
 	updateMu.Unlock()
 
-	go func() {
-		defer func() {
-			updateMu.Lock()
-			updateRunning = false
-			updateMu.Unlock()
-		}()
-		cmd := exec.Command("/usr/local/bin/vpn-update")
-		cmd.Env = append(os.Environ(), "PATH=/usr/local/bin:/usr/bin:/bin:/sbin")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Printf("[update] failed: %s: %v", out, err)
-		} else {
-			log.Printf("[update] completed: %s", out)
-		}
-	}()
+	// Run completely detached from this process so it survives container death
+	cmd := exec.Command("nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p",
+		"--", "/bin/bash", "-c",
+		"nohup /usr/local/bin/vpn-update >> /var/log/vpn-update.log 2>&1 &")
+	cmd.Env = append(os.Environ(), "PATH=/usr/local/bin:/usr/bin:/bin:/sbin")
+	if err := cmd.Start(); err != nil {
+		log.Printf("[update] failed to start: %v", err)
+		updateMu.Lock()
+		updateRunning = false
+		updateMu.Unlock()
+	} else {
+		log.Printf("[update] script launched via nsenter pid %d", cmd.Process.Pid)
+		cmd.Process.Release()
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(w, `{"status":"update started"}`)
