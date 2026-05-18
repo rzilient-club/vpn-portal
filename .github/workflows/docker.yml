@@ -54,6 +54,7 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
+            --build-arg GIT_SHA=${{ github.sha }} \
             --label "git.sha=${{ github.sha }}" \
             --label "git.branch=${{ github.ref_name }}" \
             --label "build.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
