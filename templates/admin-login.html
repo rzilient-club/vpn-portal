@@ -9,45 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --lime: #B4EA1F;
-            --lime-dim: rgba(180, 234, 31, 0.12);
-            --bg: #0a0a0a;
-            --surface: #111111;
-            --surface-2: #1a1a1a;
-            --border: #222222;
-            --text: #e8e8e8;
-            --text-dim: #888888;
-            --text-muted: #555555;
-            --red: #ef4444;
-            --red-dim: rgba(239, 68, 68, 0.1);
-            --amber: #f59e0b;
-            --mono: 'JetBrains Mono', ui-monospace, monospace;
-            --sans: 'Work Sans', -apple-system, sans-serif;
-        }
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-        .grid-bg { position: fixed; inset: 0; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 60px 60px; opacity: 0.15; pointer-events: none; mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black 20%, transparent 70%); }
-        .card { position: relative; z-index: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 40px; width: 100%; max-width: 400px; margin: 24px; }
-        .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
-        .logo img { width: 28px; height: 28px; }
-        .logo span { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text); }
-        .logo .accent { color: var(--lime); }
-        .badge { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--amber); background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); padding: 3px 8px; border-radius: 4px; margin-left: auto; }
-        h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 6px; }
-        h1 .accent { background: linear-gradient(135deg, var(--lime) 0%, #8BC34A 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .sub { font-size: 13px; color: var(--text-dim); margin-bottom: 28px; }
-        .field { margin-bottom: 20px; }
-        label { display: block; font-family: var(--mono); font-size: 10px; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
-        input[type=password] { width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; font-family: var(--mono); font-size: 14px; color: var(--text); outline: none; transition: border-color 0.2s; }
-        input[type=password]:focus { border-color: var(--lime); }
-        .btn { width: 100%; background: var(--lime); color: #0a0a0a; font-family: var(--mono); font-size: 13px; font-weight: 700; padding: 14px; border-radius: 10px; border: none; cursor: pointer; transition: all 0.2s; margin-top: 4px; }
-        .btn:hover { background: #c5f52a; }
-        .error { background: var(--red-dim); border: 1px solid rgba(239,68,68,0.25); border-radius: 8px; padding: 10px 14px; font-family: var(--mono); font-size: 12px; color: var(--red); margin-bottom: 20px; }
-        .back { display: block; text-align: center; margin-top: 20px; font-family: var(--mono); font-size: 11px; color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
-        .back:hover { color: var(--lime); }
-    </style>
+    <link rel="stylesheet" href="/static/css/auth.css">
 </head>
 <body>
 <div class="grid-bg"></div>
@@ -68,8 +30,8 @@
     {{ end }}
     <form method="POST" action="/admin/login">
         <div class="field">
-            <label>Admin token</label>
-            <input type="password" name="token" placeholder="••••••••••••••••" autofocus required>
+            <label for="admin-token">Admin token</label>
+            <input type="password" id="admin-token" name="token" placeholder="••••••••••••••••" autofocus required>
         </div>
         <button type="submit" class="btn">→ access admin panel</button>
     </form>

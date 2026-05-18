@@ -108,12 +108,12 @@
         <h3>// add peer</h3>
         <form class="add-peer-form" method="POST" action="/admin/add-peer">
             <div class="add-peer-field">
-                <label>Email</label>
-                <input class="add-peer-input" type="email" name="email" placeholder="user@company.com" required>
+                <label for="peer-email">Email</label>
+                <input class="add-peer-input" id="peer-email" type="email" name="email" placeholder="user@company.com" required>
             </div>
             <div class="add-peer-field">
-                <label>Name</label>
-                <input class="add-peer-input" type="text" name="name" placeholder="Full name" required>
+                <label for="peer-name">Name</label>
+                <input class="add-peer-input" id="peer-name" type="text" name="name" placeholder="Full name" required>
             </div>
             <button type="submit" class="btn-add-peer">+ add peer</button>
         </form>
@@ -160,6 +160,7 @@
             <tr {{ if .Blocked }}class="blocked-row"{{ end }} data-pubkey="{{ .PublicKey }}" data-email="{{ .Email }}" data-name="{{ .Name }}" data-ip="{{ .AssignedIP }}" data-created="{{ .CreatedAt.Format "2006-01-02" }}" data-blocked="{{ .Blocked }}">
             <td><span class="td-email">{{ .Email }}</span></td>
             <td><span class="td-name">{{ .Name }}</span></td>
+            </tr>
             <td>
                 <span class="td-ip {{ if .Blocked }}blocked{{ end }}">{{ .AssignedIP }}</span>
             </td>
@@ -203,11 +204,7 @@
                         <button type="submit" class="btn btn-block">⊘ block</button>
                     </form>
                     {{ end }}
-                    <button
-                            class="btn btn-copy"
-                            id="copy-{{ .PublicKey | printf "%.8s" }}"
-                    onclick="copyConfig('{{ .PublicKey }}', this)"
-                    >⎘ config</button>
+                    <button class="btn btn-copy" id="copy-{{ .PublicKey | printf "%.8s" }}" onclick="copyConfig('{{ .PublicKey }}', this)">⎘ config</button>
                     <button
                             class="btn btn-revoke"
                             onclick="confirmRevoke('{{ .PublicKey }}', '{{ .Email }}', '/admin/revoke')"
