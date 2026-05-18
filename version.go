@@ -110,7 +110,9 @@ func handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 			updateRunning = false
 			updateMu.Unlock()
 		}()
-		out, err := exec.Command("/usr/local/bin/vpn-update").CombinedOutput()
+		cmd := exec.Command("/usr/local/bin/vpn-update")
+		cmd.Env = append(os.Environ(), "PATH=/usr/local/bin:/usr/bin:/bin:/sbin")
+		out, err := cmd.CombinedOutput()
 		if err != nil {
 			log.Printf("[update] failed: %s: %v", out, err)
 		} else {
