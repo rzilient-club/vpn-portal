@@ -111,16 +111,16 @@ func handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 			updateMu.Unlock()
 		}()
 		log.Printf("[update] starting /usr/local/bin/vpn-update")
-		cmd := exec.Command("/usr/local/bin/vpn-update")
+		cmd := exec.Command("bash", "-c", "nohup /usr/local/bin/vpn-update > /var/log/vpn-update.log 2>&1 &")
 		cmd.Env = append(os.Environ(), "PATH=/usr/local/bin:/usr/bin:/bin:/sbin")
-		log.Printf("[update] env PATH: %s", cmd.Env[len(cmd.Env)-1])
-		out, err := cmd.CombinedOutput()
+		err := cmd.Run()
 		if err != nil {
-			log.Printf("[update] failed: %s: %v", string(out), err)
+			log.Printf("[update] failed to start: %v", err)
 		} else {
-			log.Printf("[update] completed: %s", string(out))
+			log.Printf("[update] script launched in background")
 		}
 	}()
+
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(w, `{"status":"update started"}`)
 }
