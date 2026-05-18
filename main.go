@@ -903,7 +903,7 @@ func handleAdminAddPeer(w http.ResponseWriter, r *http.Request) {
 
 // ─── Version & Update ────────────────────────────────────────────────────────
 
-var buildSHA = getEnv("GIT_SHA", "unknown")
+var buildSHA = "unknown"
 
 var updateRunning bool
 var updateMu sync.Mutex
