@@ -241,6 +241,7 @@ if docker ps -aq --filter name=vpn-portal | grep -q .; then
     -v /etc/wireguard:/etc/wireguard \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v /usr/local/bin/vpn-update:/usr/local/bin/vpn-update \
+    -v /root/.docker:/root/.docker:ro \
     ${REGISTRY}/${IMAGE}:latest
   echo "    container recreated with new secrets"
 else
@@ -399,7 +400,7 @@ wget -q https://github.com/digitalocean/doctl/releases/download/v1.104.0/doctl-1
 tar -xzf doctl-1.104.0-linux-amd64.tar.gz
 mv doctl /usr/local/bin/
 doctl auth init --access-token ${DO_API_TOKEN}
-doctl registry login --never-expire
+doctl registry login
 echo "    authenticated"
 
 echo "==> Pulling vpn-portal image"
@@ -451,7 +452,7 @@ cat > /usr/local/bin/vpn-update << 'UPDATEEOF'
 set -e
 REGISTRY="registry.digitalocean.com/rzilient-do-containers"
 IMAGE="vpn-portal"
-doctl registry login --never-expire
+doctl registry login
 docker pull $REGISTRY/$IMAGE:latest
 docker stop vpn-portal
 docker rm vpn-portal
@@ -464,6 +465,7 @@ docker run -d \
   -v /etc/wireguard:/etc/wireguard \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /usr/local/bin/vpn-update:/usr/local/bin/vpn-update \
+  -v /root/.docker:/root/.docker:ro \
   $REGISTRY/$IMAGE:latest
 echo "vpn-portal updated"
 UPDATEEOF
